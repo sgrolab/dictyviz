@@ -4,56 +4,59 @@ import os, zarr, cv2, cmapy, copy, math
 import numpy as np
 from tqdm import tqdm
 
-def createRootStore(zarr_file):
-    nestedStore = zarr.NestedDirectoryStore(zarr_file, dimension_separator='/')
+def createRootStore(zarrFile):
+    nestedStore = zarr.NestedDirectoryStore(zarrFile, dimension_separator='/')
     root = zarr.group(store=nestedStore, overwrite=False)
 
-def createAnalysisGroup(root):
+def createZarrGroup(root, groupName):
 
-    if 'analysis' in root:
-        anlaysisGroup = root['analysis']
+    if groupName in root:
+        group = root[groupName]
     else:
-        analysisGroup = root.create_group('analysis')
+        group = root.create_group(groupName)
+    return group
 
 def getDimensions(resArray):
-    return resArray.shape[0], resArray.shape[2], resArray.shape[3], resArray.shape[4]
+    return resArray.shape[0], resArray.shape[1], resArray.shape[2], resArray.shape[3], resArray.shape[4]
 
-def calcMaxProjections(root, nChannel, res_lvl=0):
+def calcMaxProjections(root, res_lvl=0):
 
     # define resolution level
     resArray = root['0'][str(res_lvl)]
 
     # get dataset dimensions
-    lenT, lenZ, lenY, lenX = getDimensions(resArray)
+    lenT, lenCh, lenZ, lenY, lenX = getDimensions(resArray)
     
     analysisGroup = root['analysis']
 
     # create max projections group
-    maxProjectionsGroup = analysisGroup.create_group('max_projections')
+    maxProjectionsGroup = createZarrGroup(analysisGroup, 'max_projections')
 
     # create zarr arrays for each max projection 
-    maxZ = maxProjectionsGroup.zeros('maxz',shape=(lenT,lenY,lenX),chunks=(1,64,64))
-    maxX = maxProjectionsGroup.zeros('maxx',shape=(lenT,lenZ,lenY),chunks=(1,64,64))
-    maxY = maxProjectionsGroup.zeros('maxy',shape=(lenT,lenZ,lenX),chunks=(1,64,64))
+    maxZ = maxProjectionsGroup.zeros('maxz',shape=(lenT,lenCh,lenY,lenX),chunks=(1,1,64,64))
+    maxX = maxProjectionsGroup.zeros('maxx',shape=(lenT,lenCh,lenZ,lenY),chunks=(1,1,64,64))
+    maxY = maxProjectionsGroup.zeros('maxy',shape=(lenT,lenCh,lenZ,lenX),chunks=(1,1,64,64))
 
     # iterate through each timepoint and compute max projections
     for i in tqdm(range(lenT)):
-        frame = resArray[i, nChannel, :, :, :]
-        maxZ[i] = np.max(frame,axis=0)
-        maxX[i] = np.max(frame,axis=2)
-        maxY[i] = np.max(frame,axis=1)
+        for j in range(lenCh):
+            frame = resArray[i, j, :, :, :]
+            maxZ[i,j] = np.max(frame,axis=0)
+            maxX[i,j] = np.max(frame,axis=2)
+            maxY[i,j] = np.max(frame,axis=1)
 
-def calcSlicedMaxProjections(root, nChannel, res_lvl=0):
+
+def calcSlicedMaxProjections(root, res_lvl=0):
     # define resolution level
     resArray = root['0'][str(res_lvl)]
 
     # get dataset dimensions
-    lenT, lenZ, lenY, lenX = getDimensions(resArray)
+    lenT, lenCh, lenZ, lenY, lenX = getDimensions(resArray)
 
     analysisGroup = root['analysis']
 
     # create max projections group
-    slicedMaxProjectionsGroup = analysisGroup.create_group('sliced_max_projections')
+    slicedMaxProjectionsGroup = createZarrGroup(analysisGroup, 'sliced_max_projections')
 
     # set number of slices
     sliceDepth = 83 # 83px*2.41um/px = 200 um
@@ -61,26 +64,22 @@ def calcSlicedMaxProjections(root, nChannel, res_lvl=0):
     nSlicesY = math.ceil(lenY/sliceDepth)
 
     # create zarr arrays for each max projection
-    slicedMaxX = slicedMaxProjectionsGroup.zeros('sliced_maxx',shape=(nSlicesX,lenT,lenZ,lenY),chunks=(1,1,64,64))
-    slicedMaxY = slicedMaxProjectionsGroup.zeros('sliced_maxy',shape=(nSlicesY,lenT,lenZ,lenX),chunks=(1,1,64,64))
+    slicedMaxX = slicedMaxProjectionsGroup.zeros('sliced_maxx',shape=(nSlicesX,lenT,lenCh,lenZ,lenY),chunks=(1,1,1,64,64))
+    slicedMaxY = slicedMaxProjectionsGroup.zeros('sliced_maxy',shape=(nSlicesY,lenT,lenCh,lenZ,lenX),chunks=(1,1,1,64,64))
 
     for i in range(nSlicesX):
         for j in range(lenT):
-            rangeX = [i*sliceDepth, (i+1)*sliceDepth]
-            frame = resArray[j, nChannel, :, :, rangeX[0]:rangeX[1]]
-            slicedMaxX[i,j] = np.max(frame,axis=2)
+            for k in range(lenCh):
+                rangeX = [i*sliceDepth, (i+1)*sliceDepth]
+                frame = resArray[j, k, :, :, rangeX[0]:rangeX[1]]
+                slicedMaxX[i,j,k] = np.max(frame,axis=2)
     
     for i in range(nSlicesY):
         for j in range(lenT):
-            rangeY = [i*sliceDepth, (i+1)*sliceDepth]
-            frame = resArray[j, nChannel, :, rangeY[0]:rangeY[1], :]
-            slicedMaxY[i,j] = np.max(frame,axis=1)
-
-def createMoviesGroup(root):
-    if 'movies' in root:
-        moviesGroup = root['movies']
-    else:
-        moviesGroup = root.create_group('movies')
+            for k in range(lenCh):
+                rangeY = [i*sliceDepth, (i+1)*sliceDepth]
+                frame = resArray[j, k, :, rangeY[0]:rangeY[1], :]
+                slicedMaxY[i,j,k] = np.max(frame,axis=1)
 
 # replace with an adjustable auto contrast of some sort
 def calcScaleMax(root):
@@ -98,7 +97,7 @@ def adjustContrast(im, adjMax, adjMin):
     return(contrastedIm)
 
 class scaleBar:
-    def __init__(self, posY, posX, height, length, text, testOffset):
+    def __init__(self, posY, posX, height, length, text, textOffset):
         self.posY = posY
         self.posX = posX
         self.height = height
@@ -108,27 +107,24 @@ class scaleBar:
 
     def _addScaleBar(self, frame):
         frame[self.posY:self.posY+self.height, self.posX:self.posX+self.length,:] = 255
-        cv2.putText(frame, self.text, (self.posX+self.textOffset, self.posY-30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 3, [255,255,255], 6, cv2.LINE_AA)
+        cv2.putText(frame, self.text, (self.posX+self.textOffset, self.posY-10), #self.posY-30
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, [255,255,255], 3, cv2.LINE_AA) #3, 6
 
     def _addScaleBarZ(self, frame):
         frame[self.posY:self.posY+self.height, self.posX:self.posX+self.length,:] = 255
-        cv2.putText(frame, self.text, (self.posX, self.posY-50),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, [255,255,255], 3, cv2.LINE_AA)
+        cv2.putText(frame, self.text, (self.posX, self.posY-10), #self.posY-50
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.1, [255,255,255], 1, cv2.LINE_AA)
 
-def makeOrthoMaxVideo(filename, root, scaleMax):
-    # define resolution level
-    resArray = root['0'][str(res_lvl)]
+def makeOrthoMaxVideo(filename, root, nChannel, scaleMax):
 
     maxZ = root['analysis']['max_projections']['maxz']
     maxY = root['analysis']['max_projections']['maxy']
     maxX = root['analysis']['max_projections']['maxx']
     
-    
     lenT = maxZ.shape[0]
-    lenZ = maxY.shape[1]
-    lenY = maxZ.shape[1]
-    lenX = maxZ.shape[2]
+    lenZ = maxY.shape[2]
+    lenY = maxZ.shape[2]
+    lenX = maxZ.shape[3]
     
     gap = 20
 
@@ -138,7 +134,7 @@ def makeOrthoMaxVideo(filename, root, scaleMax):
     imagingFreq = 10
 
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(xz,yz),1)
-    #adjMax = 10000
+
     #adjust contrast based on max pixel value in the array
     adjMax = scaleMax
     adjMin = 0
@@ -149,17 +145,10 @@ def makeOrthoMaxVideo(filename, root, scaleMax):
         im = np.zeros([yz,xz])
 
         # copy max projections 
-        im[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i],axis=0))
-        im[(lenZ+gap):yz,0:lenX] = copy.copy(maxZ[i])
-        im[(lenZ+gap):yz,(lenX+gap):xz] = copy.copy(np.transpose(maxx[i]))
+        im[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannel],axis=0))
+        im[(lenZ+gap):yz,0:lenX] = copy.copy(maxZ[i,nChannel])
+        im[(lenZ+gap):yz,(lenX+gap):xz] = copy.copy(np.transpose(maxX[i,nChannel]))
         
-        # adjust contrast
-        # im[np.where(im>adjMax)] = adjMax
-        # im[np.where(im<adjMin)] = adjMin
-        # backSub = im - adjMin
-        # backSub[np.where(backSub<0)] = 0
-        # scaledIm = np.divide(backSub,adjMax-adjMin)
-        # im8 = np.multiply(scaledIm,255).astype('uint8')
         contrastedIm = adjustContrast(im, adjMax, adjMin)
         frame = cv2.applyColorMap(contrastedIm,cmapy.cmap('viridis'))
 
@@ -167,46 +156,39 @@ def makeOrthoMaxVideo(filename, root, scaleMax):
         
         # time stamp
         t = f'{i*imagingFreq // 60:02d}' + ':' + f'{i*imagingFreq % 60:02d}'
-        cv2.putText(frame,t,(25,lenZ+gap+150),cv2.FONT_HERSHEY_SIMPLEX,6,[255,255,255],10,cv2.LINE_AA)
+        #cv2.putText(frame,t,(25,lenZ+gap+150),cv2.FONT_HERSHEY_SIMPLEX,6,[255,255,255],10,cv2.LINE_AA)
+        cv2.putText(frame,t,(15,lenZ+gap+30),cv2.FONT_HERSHEY_SIMPLEX,1,[255,255,255],3,cv2.LINE_AA)
 
         # add scale bars
-        # TODO: use function that defines scale bar parameters using scale bar class
         scaleBarXY = scaleBar(
-            posY = yz - 76,
-            posX = lenX - 468,
-            height = 30,
-            length = 416,
-            text = '1 mm',
-            textOffset = 50,
+            posY = yz - 20, #76
+            posX = lenX - 50, #468
+            height = 10, #30
+            length = 42, #416
+            text = '100 um', #1 mm
+            textOffset = 0, #50
         )
         scaleBarXY._addScaleBar(frame)
 
         scaleBarXZ = scaleBar(
             posY = lenZ,
             posX = lenX + gap,
-            height = 30,
+            height = 10, #30
             length = lenZ,
             text = str(lenZ * 2) + ' um',
-            textOffset = 50,
+            textOffset = 5, #50
         )
         scaleBarXZ._addScaleBarZ(frame)
 
-        # frame[scaleBarY:scaleBarY+scaleBarHeight,scaleBarX:scaleBarX+scaleBarLength,:] = 255
-        # cv2.putText(frame,scaleBarText,(scaleBarX+scaleBarText_offset,scaleBarY-30),cv2.FONT_HERSHEY_SIMPLEX,3,[255,255,255],6,cv2.LINE_AA)
-        
-        # add xz scale bar (use scaleBar.addScaleBarZ)
-        # frame[lenZ-scaleBarHeight:lenZ,lenX+gap:lenX+gap+lenZ,:] = 255
-        # cv2.putText(frame,scaleBarZText,(lenX+gap,lenZ-50),cv2.FONT_HERSHEY_SIMPLEX,1,[255,255,255],3,cv2.LINE_AA)
-        
         # write frame 
         vid.write(frame)
 
     vid.release()
     cv2.destroyAllWindows()
 
-def makeSlicedOrthoMaxVideos(filename, z, scaleMax):
+def makeSlicedOrthoMaxVideos(filename, root, nChannel, scaleMax):
         
-    slicedMaxX = z['analysis']['sliced_max_projections']['sliced_maxx']
+    slicedMaxX = root['analysis']['sliced_max_projections']['sliced_maxx']
 
     nSlices = slicedMaxX.shape[0]
     lenT = slicedMaxX.shape[1]
@@ -230,7 +212,7 @@ def makeSlicedOrthoMaxVideos(filename, z, scaleMax):
 
         # copy max projections 
         for j in range(nSlices):
-            im[(lenZ*j+gap*j):(lenZ*(j+1)+gap*j),:] = copy.copy(np.flip(slicedMaxX[j,i], axis=0))
+            im[(lenZ*j+gap*j):(lenZ*(j+1)+gap*j),:] = copy.copy(np.flip(slicedMaxX[j,i,nChannel], axis=0))
 
         # adjust contrast
         contrastedIm = adjustContrast(im, adjMax, adjMin)
