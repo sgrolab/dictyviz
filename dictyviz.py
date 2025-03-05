@@ -1,6 +1,11 @@
 # Dicty data functions for ome-zarr datasets
 
-import os, zarr, cv2, cmapy, copy, math
+import copy
+import math
+
+import zarr
+import cv2
+import cmapy
 import numpy as np
 from tqdm import tqdm
 
@@ -19,16 +24,13 @@ def createZarrGroup(root, groupName):
         group = root.create_group(groupName)
     return group
 
-def getDimensions(resArray):
-    return resArray.shape[0], resArray.shape[1], resArray.shape[2], resArray.shape[3], resArray.shape[4]
-
 def calcMaxProjections(root, res_lvl=0):
 
     # define resolution level
     resArray = root['0'][str(res_lvl)]
 
     # get dataset dimensions
-    lenT, lenCh, lenZ, lenY, lenX = getDimensions(resArray)
+    lenT, lenCh, lenZ, lenY, lenX = resArray.shape
     
     analysisGroup = root['analysis']
 
@@ -54,7 +56,7 @@ def calcSlicedMaxProjections(root, res_lvl=0):
     resArray = root['0'][str(res_lvl)]
 
     # get dataset dimensions
-    lenT, lenCh, lenZ, lenY, lenX = getDimensions(resArray)
+    lenT, lenCh, lenZ, lenY, lenX = resArray.shape
 
     analysisGroup = root['analysis']
 
@@ -91,8 +93,7 @@ def calcScaleMax(root):
     return scaleMax
 
 def adjustContrast(im, adjMax, adjMin):
-    im[np.where(im>adjMax)] = adjMax
-    im[np.where(im<adjMin)] = adjMin
+    im = np.clip(im,adjMin,adjMax)
     backSub = im - adjMin
     backSub[np.where(backSub<0)] = 0
     scaledIm = np.divide(backSub,adjMax-adjMin)
@@ -151,6 +152,11 @@ def makeOrthoMaxVideo(filename, root, nChannel, scaleMax):
         im[(lenZ+gap):yz,(lenX+gap):xz] = copy.copy(np.transpose(maxX[i,nChannel]))
         
         contrastedIm = adjustContrast(im, adjMax, adjMin)
+
+        # invert if rock channel
+        if nChannel == 1:
+            contrastedIm = 255 - contrastedIm
+
         frame = cv2.applyColorMap(contrastedIm,cmapy.cmap('viridis'))
 
         frame[np.where(im==0)] = [0,0,0]
@@ -217,6 +223,7 @@ def makeSlicedOrthoMaxVideos(filename, root, nChannel, scaleMax):
 
         # adjust contrast
         contrastedIm = adjustContrast(im, adjMax, adjMin)
+
         frame = cv2.applyColorMap(contrastedIm,cmapy.cmap('viridis'))
 
         frame[np.where(im==0)] = [0,0,0]
@@ -227,8 +234,8 @@ def makeSlicedOrthoMaxVideos(filename, root, nChannel, scaleMax):
 
         # add scale bar
         scaleBarXY = scaleBar(
-            posY = yz - 76,
-            posX = lenX - 468,
+            posY = sizeY - 76,
+            posX = sizeX - 468,
             height = 30,
             length = 416,
             text = '1 mm',
@@ -242,7 +249,7 @@ def makeSlicedOrthoMaxVideos(filename, root, nChannel, scaleMax):
     vid.release()
     cv2.destroyAllWindows()
 
-def makeCompOrthoMaxVideo(filename, root, scaleMax):
+def makeCompOrthoMaxVideo(filename, root, scaleMaxCh1, scaleMaxCh2):
     
     maxZ = root['analysis']['max_projections']['maxz']
     maxY = root['analysis']['max_projections']['maxy']
@@ -261,7 +268,6 @@ def makeCompOrthoMaxVideo(filename, root, scaleMax):
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(xz,yz),1)
 
     #adjust contrast based on max pixel value in the array
-    adjMax = scaleMax
     adjMin = 0
 
     for i in tqdm(range(lenT)):
@@ -279,8 +285,12 @@ def makeCompOrthoMaxVideo(filename, root, scaleMax):
         imCh2[(lenZ+gap):yz,0:lenX] = copy.copy(maxZ[i,1])
         imCh2[(lenZ+gap):yz,(lenX+gap):xz] = copy.copy(np.transpose(maxX[i,1]))
         
-        contrastedImCh1 = adjustContrast(imCh1, adjMax, adjMin)
-        contrastedImCh2 = adjustContrast(imCh2, adjMax, adjMin)
+        contrastedImCh1 = adjustContrast(imCh1, scaleMaxCh1, adjMin)
+        contrastedImCh2 = adjustContrast(imCh2, scaleMaxCh2, adjMin)
+
+        # invert rock channel
+        contrastedImCh2 = 255 - contrastedImCh2
+
         frame = cv2.merge((contrastedImCh1,contrastedImCh2,contrastedImCh1))
 
         frame[np.where(imCh1==0)] = [0,0,0]

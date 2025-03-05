@@ -10,6 +10,7 @@ sys.path.insert(0,'Y:\\jennifer')
 # select zarr file
 Tk().withdraw() 
 zarrFile = filedialog.askdirectory(initialdir='cryolite', title='Select zarr file(s)')
+os.chdir(zarrFile)
 outputFile = zarrFile + '\\makeOrthoMaxProjMovies_out.txt'
 print(zarrFile)
 with open(outputFile, 'w') as f:
@@ -35,6 +36,6 @@ with open(outputFile, 'w') as f:
     scaleMax = 700
 
     # make max projection videos
-    dv.makeOrthoMaxVideo('cells_orthomax3.avi', root, cells, scaleMax)
-    dv.makeOrthoMaxVideo('rocks_orthomax3.avi', root, rocks, scaleMax)
+    dv.makeOrthoMaxVideo('cells_orthomax.avi', root, cells, scaleMax)
+    dv.makeOrthoMaxVideo('rocks_orthomax.avi', root, rocks, scaleMax)
     print('OrthoMax videos created at ', datetime.datetime.now(), '\n', file=f)
