@@ -4,6 +4,9 @@ import os, zarr, cv2, cmapy, copy, math
 import numpy as np
 from tqdm import tqdm
 
+# define global variables
+IMAGING_FREQ = 10
+
 def createRootStore(zarrFile):
     nestedStore = zarr.NestedDirectoryStore(zarrFile, dimension_separator='/')
     root = zarr.group(store=nestedStore, overwrite=False)
@@ -33,9 +36,9 @@ def calcMaxProjections(root, res_lvl=0):
     maxProjectionsGroup = createZarrGroup(analysisGroup, 'max_projections')
 
     # create zarr arrays for each max projection 
-    maxZ = maxProjectionsGroup.zeros('maxz',shape=(lenT,lenCh,lenY,lenX),chunks=(1,1,64,64))
-    maxX = maxProjectionsGroup.zeros('maxx',shape=(lenT,lenCh,lenZ,lenY),chunks=(1,1,64,64))
-    maxY = maxProjectionsGroup.zeros('maxy',shape=(lenT,lenCh,lenZ,lenX),chunks=(1,1,64,64))
+    maxZ = maxProjectionsGroup.zeros('maxz',shape=(lenT,lenCh,lenY,lenX),chunks=(1,lenCh,lenY,lenX))
+    maxX = maxProjectionsGroup.zeros('maxx',shape=(lenT,lenCh,lenZ,lenY),chunks=(1,lenCh,lenZ,lenY))
+    maxY = maxProjectionsGroup.zeros('maxy',shape=(lenT,lenCh,lenZ,lenX),chunks=(1,lenCh,lenZ,lenX))
 
     # iterate through each timepoint and compute max projections
     for i in tqdm(range(lenT)):
@@ -131,8 +134,6 @@ def makeOrthoMaxVideo(filename, root, nChannel, scaleMax):
     xz = lenX + lenZ + gap
     yz = lenY + lenZ + gap
 
-    imagingFreq = 10
-
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(xz,yz),1)
 
     #adjust contrast based on max pixel value in the array
@@ -155,7 +156,7 @@ def makeOrthoMaxVideo(filename, root, nChannel, scaleMax):
         frame[np.where(im==0)] = [0,0,0]
         
         # time stamp
-        t = f'{i*imagingFreq // 60:02d}' + ':' + f'{i*imagingFreq % 60:02d}'
+        t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
         #cv2.putText(frame,t,(25,lenZ+gap+150),cv2.FONT_HERSHEY_SIMPLEX,6,[255,255,255],10,cv2.LINE_AA)
         cv2.putText(frame,t,(15,lenZ+gap+30),cv2.FONT_HERSHEY_SIMPLEX,1,[255,255,255],3,cv2.LINE_AA)
 
@@ -221,7 +222,7 @@ def makeSlicedOrthoMaxVideos(filename, root, nChannel, scaleMax):
         frame[np.where(im==0)] = [0,0,0]
 
         # add time stamp
-        t = f'{i*imagingFreq // 60:02d}' + ':' + f'{i*imagingFreq % 60:02d}'
+        t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
         cv2.putText(frame,t,(25,150),cv2.FONT_HERSHEY_SIMPLEX,6,[255,255,255],10,cv2.LINE_AA)
 
         # add scale bar
@@ -241,7 +242,78 @@ def makeSlicedOrthoMaxVideos(filename, root, nChannel, scaleMax):
     vid.release()
     cv2.destroyAllWindows()
 
-            
+def makeCompOrthoMaxVideo(filename, root, scaleMax):
+    
+    maxZ = root['analysis']['max_projections']['maxz']
+    maxY = root['analysis']['max_projections']['maxy']
+    maxX = root['analysis']['max_projections']['maxx']
+    
+    lenT = maxZ.shape[0]
+    lenZ = maxY.shape[2]
+    lenY = maxZ.shape[2]
+    lenX = maxZ.shape[3]
+    
+    gap = 20
 
+    xz = lenX + lenZ + gap
+    yz = lenY + lenZ + gap
 
+    vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(xz,yz),1)
+
+    #adjust contrast based on max pixel value in the array
+    adjMax = scaleMax
+    adjMin = 0
+
+    for i in tqdm(range(lenT)):
+
+        # initialize frame 
+        imCh1 = np.zeros([yz,xz])
+        imCh2 = np.zeros([yz,xz])
+
+        # copy max projections 
+        imCh1[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,0],axis=0))
+        imCh1[(lenZ+gap):yz,0:lenX] = copy.copy(maxZ[i,0])
+        imCh1[(lenZ+gap):yz,(lenX+gap):xz] = copy.copy(np.transpose(maxX[i,0]))
+
+        imCh2[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,1],axis=0))
+        imCh2[(lenZ+gap):yz,0:lenX] = copy.copy(maxZ[i,1])
+        imCh2[(lenZ+gap):yz,(lenX+gap):xz] = copy.copy(np.transpose(maxX[i,1]))
+        
+        contrastedImCh1 = adjustContrast(imCh1, adjMax, adjMin)
+        contrastedImCh2 = adjustContrast(imCh2, adjMax, adjMin)
+        frame = cv2.merge((contrastedImCh1,contrastedImCh2,contrastedImCh1))
+
+        frame[np.where(imCh1==0)] = [0,0,0]
+        
+        # time stamp
+        t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
+        #cv2.putText(frame,t,(25,lenZ+gap+150),cv2.FONT_HERSHEY_SIMPLEX,6,[255,255,255],10,cv2.LINE_AA)
+        cv2.putText(frame,t,(15,lenZ+gap+30),cv2.FONT_HERSHEY_SIMPLEX,1,[255,255,255],3,cv2.LINE_AA)
+
+        # add scale bars
+        scaleBarXY = scaleBar(
+            posY = yz - 20, #76
+            posX = lenX - 50, #468
+            height = 10, #30
+            length = 42, #416
+            text = '100 um', #1 mm
+            textOffset = 0, #50
+        )
+        scaleBarXY._addScaleBar(frame)
+
+        scaleBarXZ = scaleBar(
+            posY = lenZ,
+            posX = lenX + gap,
+            height = 10, #30
+            length = lenZ,
+            text = str(lenZ * 2) + ' um',
+            textOffset = 5, #50
+        )
+        scaleBarXZ._addScaleBarZ(frame)
+
+        # write frame 
+        vid.write(frame)
+
+    vid.release()
+    cv2.destroyAllWindows()
 
