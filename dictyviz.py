@@ -24,6 +24,13 @@ def createZarrGroup(root, groupName):
         group = root.create_group(groupName)
     return group
 
+class channel:
+    def __init__(self, name, nChannel, scaleMax, adjMin=0):
+        self.name = name
+        self.nChannel = nChannel
+        self.scaleMax = scaleMax
+        self.adjMin = adjMin
+
 def calcMaxProjections(root, res_lvl=0):
 
     # define resolution level
@@ -119,7 +126,12 @@ class scaleBar:
         cv2.putText(frame, self.text, (self.posX, self.posY-10), #self.posY-50
                     cv2.FONT_HERSHEY_SIMPLEX, 0.1, [255,255,255], 1, cv2.LINE_AA)
 
-def makeOrthoMaxVideo(filename, root, nChannel, scaleMax):
+def makeOrthoMaxVideo(root, channel):
+
+    filename = channel.name + '_orthomax.avi'
+    nChannel = channel.nChannel
+    adjMax = channel.scaleMax
+    adjMin = channel.adjMin
 
     maxZ = root['analysis']['max_projections']['maxz']
     maxY = root['analysis']['max_projections']['maxy']
@@ -137,10 +149,6 @@ def makeOrthoMaxVideo(filename, root, nChannel, scaleMax):
 
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(xz,yz),1)
 
-    #adjust contrast based on max pixel value in the array
-    adjMax = scaleMax
-    adjMin = 0
-
     for i in tqdm(range(lenT)):
 
         # initialize frame 
@@ -154,7 +162,7 @@ def makeOrthoMaxVideo(filename, root, nChannel, scaleMax):
         contrastedIm = adjustContrast(im, adjMax, adjMin)
 
         # invert if rock channel
-        if nChannel == 1:
+        if channel.name == 'rocks':
             contrastedIm = 255 - contrastedIm
 
         frame = cv2.applyColorMap(contrastedIm,cmapy.cmap('viridis'))
@@ -249,8 +257,21 @@ def makeSlicedOrthoMaxVideos(filename, root, nChannel, scaleMax):
     vid.release()
     cv2.destroyAllWindows()
 
-def makeCompOrthoMaxVideo(filename, root, scaleMaxCh1, scaleMaxCh2):
-    
+def makeCompOrthoMaxVideo(root, channels):
+
+    filename = 'comp_orthomax.avi'
+
+    # set channel values
+    for channel in channels:
+        if channel.name == 'cells':
+            nChannelCells = channel.nChannel
+            scaleMaxCells = channel.scaleMax
+            adjMinCells = channel.adjMin
+        else:
+            nChannelRocks = channel.nChannel
+            scaleMaxRocks = channel.scaleMax
+            adjMinRocks = channel.adjMin
+
     maxZ = root['analysis']['max_projections']['maxz']
     maxY = root['analysis']['max_projections']['maxy']
     maxX = root['analysis']['max_projections']['maxx']
@@ -267,33 +288,29 @@ def makeCompOrthoMaxVideo(filename, root, scaleMaxCh1, scaleMaxCh2):
 
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(xz,yz),1)
 
-    #adjust contrast based on max pixel value in the array
-    adjMin = 0
-
     for i in tqdm(range(lenT)):
-
-        # initialize frame 
-        imCh1 = np.zeros([yz,xz])
-        imCh2 = np.zeros([yz,xz])
+        
+        imCells = np.zeros([yz,xz])
+        imRocks = np.zeros([yz,xz])
 
         # copy max projections 
-        imCh1[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,0],axis=0))
-        imCh1[(lenZ+gap):yz,0:lenX] = copy.copy(maxZ[i,0])
-        imCh1[(lenZ+gap):yz,(lenX+gap):xz] = copy.copy(np.transpose(maxX[i,0]))
+        imCells[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannelCells],axis=0))
+        imCells[(lenZ+gap):yz,0:lenX] = copy.copy(maxZ[i,nChannelCells])
+        imCells[(lenZ+gap):yz,(lenX+gap):xz] = copy.copy(np.transpose(maxX[i,nChannelCells]))
 
-        imCh2[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,1],axis=0))
-        imCh2[(lenZ+gap):yz,0:lenX] = copy.copy(maxZ[i,1])
-        imCh2[(lenZ+gap):yz,(lenX+gap):xz] = copy.copy(np.transpose(maxX[i,1]))
+        imRocks[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannelRocks],axis=0))
+        imRocks[(lenZ+gap):yz,0:lenX] = copy.copy(maxZ[i,nChannelRocks])
+        imRocks[(lenZ+gap):yz,(lenX+gap):xz] = copy.copy(np.transpose(maxX[i,nChannelRocks]))
         
-        contrastedImCh1 = adjustContrast(imCh1, scaleMaxCh1, adjMin)
-        contrastedImCh2 = adjustContrast(imCh2, scaleMaxCh2, adjMin)
+        contrastedImCells = adjustContrast(imCells, scaleMaxCells, adjMinCells)
+        contrastedImRocks = adjustContrast(imRocks, scaleMaxRocks, adjMinRocks)
 
         # invert rock channel
-        contrastedImCh2 = 255 - contrastedImCh2
+        contrastedImRocks = 255 - contrastedImRocks
 
-        frame = cv2.merge((contrastedImCh1,contrastedImCh2,contrastedImCh1))
+        frame = cv2.merge((contrastedImCells,contrastedImRocks,contrastedImCells))
 
-        frame[np.where(imCh1==0)] = [0,0,0]
+        frame[np.where(contrastedImCells==0)] = [0,0,0]
         
         # time stamp
         t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
