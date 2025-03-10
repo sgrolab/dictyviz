@@ -76,21 +76,19 @@ def calcSlicedMaxProjections(root, res_lvl=0):
     nSlicesY = math.ceil(lenY/sliceDepth)
 
     # create zarr arrays for each max projection
-    slicedMaxX = slicedMaxProjectionsGroup.zeros('sliced_maxx',shape=(nSlicesX,lenT,lenCh,lenZ,lenY),chunks=(1,1,1,64,64))
-    slicedMaxY = slicedMaxProjectionsGroup.zeros('sliced_maxy',shape=(nSlicesY,lenT,lenCh,lenZ,lenX),chunks=(1,1,1,64,64))
+    slicedMaxX = slicedMaxProjectionsGroup.zeros('sliced_maxx',shape=(lenT,lenCh,nSlicesX,lenZ,lenY),chunks=(1,1,2,lenZ,lenY))
+    slicedMaxY = slicedMaxProjectionsGroup.zeros('sliced_maxy',shape=(lenT,lenCh,nSlicesY,lenZ,lenX),chunks=(1,1,2,lenZ,lenX))
 
-    for i in range(nSlicesX):
-        for j in range(lenT):
-            for k in range(lenCh):
-                rangeX = [i*sliceDepth, (i+1)*sliceDepth]
-                frame = resArray[j, k, :, :, rangeX[0]:rangeX[1]]
+    for i in tqdm(range(lenT)):
+        for j in range(lenCh):
+            for k in range(nSlicesX):
+                rangeX = [k*sliceDepth, (k+1)*sliceDepth]
+                frame = resArray[i,j,:,:,rangeX[0]:rangeX[1]]
                 slicedMaxX[i,j,k] = np.max(frame,axis=2)
-    
-    for i in range(nSlicesY):
-        for j in range(lenT):
-            for k in range(lenCh):
-                rangeY = [i*sliceDepth, (i+1)*sliceDepth]
-                frame = resArray[j, k, :, rangeY[0]:rangeY[1], :]
+
+            for k in range(nSlicesY):
+                rangeY = [k*sliceDepth, (k+1)*sliceDepth]
+                frame = resArray[i,j,:,rangeY[0]:rangeY[1],:]
                 slicedMaxY[i,j,k] = np.max(frame,axis=1)
 
 # replace with an adjustable auto contrast of some sort
@@ -98,6 +96,14 @@ def calcScaleMax(root):
     maxZ = root['analysis']['max_projections']['maxz']
     scaleMax = np.max(maxZ)
     return scaleMax
+
+def getProjectionDimensions(maxX, maxY):
+    # return the dimensions of the max projections
+    lenT = maxX.shape[0]
+    lenZ = maxX.shape[-2]
+    lenY = maxX.shape[-1]
+    lenX = maxY.shape[-1]
+    return lenT, lenZ, lenY, lenX
 
 def adjustContrast(im, adjMax, adjMin):
     im = np.clip(im,adjMin,adjMax)
@@ -137,27 +143,24 @@ def makeOrthoMaxVideo(root, channel):
     maxY = root['analysis']['max_projections']['maxy']
     maxX = root['analysis']['max_projections']['maxx']
     
-    lenT = maxZ.shape[0]
-    lenZ = maxY.shape[2]
-    lenY = maxZ.shape[2]
-    lenX = maxZ.shape[3]
+    lenT, lenZ, lenY, lenX = getProjectionDimensions(maxX, maxY)
     
     gap = 20
 
-    xz = lenX + lenZ + gap
-    yz = lenY + lenZ + gap
+    movieWidth = lenX + lenZ + gap
+    movieHeight = lenY + lenZ + gap
 
-    vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(xz,yz),1)
+    vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
     for i in tqdm(range(lenT)):
 
         # initialize frame 
-        im = np.zeros([yz,xz])
+        im = np.zeros([movieHeight,movieWidth])
 
         # copy max projections 
         im[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannel],axis=0))
-        im[(lenZ+gap):yz,0:lenX] = copy.copy(maxZ[i,nChannel])
-        im[(lenZ+gap):yz,(lenX+gap):xz] = copy.copy(np.transpose(maxX[i,nChannel]))
+        im[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannel])
+        im[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannel]))
         
         contrastedIm = adjustContrast(im, adjMax, adjMin)
 
@@ -176,7 +179,7 @@ def makeOrthoMaxVideo(root, channel):
 
         # add scale bars
         scaleBarXY = scaleBar(
-            posY = yz - 20, #76
+            posY = movieHeight - 20, #76
             posX = lenX - 50, #468
             height = 10, #30
             length = 42, #416
@@ -201,61 +204,68 @@ def makeOrthoMaxVideo(root, channel):
     vid.release()
     cv2.destroyAllWindows()
 
-def makeSlicedOrthoMaxVideos(filename, root, nChannel, scaleMax):
-        
-    slicedMaxX = root['analysis']['sliced_max_projections']['sliced_maxx']
+def makeSlicedOrthoMaxVideos(root, channel):
 
-    nSlices = slicedMaxX.shape[0]
-    lenT = slicedMaxX.shape[1]
-    lenZ = slicedMaxX.shape[2]
-    lenY = slicedMaxX.shape[3]
+    filenames = [channel.name + '_X_sliced_orthomax.avi', channel.name + '_Y_sliced_orthomax.avi']
+    nChannel = channel.nChannel
+    adjMax = channel.scaleMax
+    adjMin = channel.adjMin
+        
+    slicedMaxes = [root['analysis']['sliced_max_projections']['sliced_maxx'], root['analysis']['sliced_max_projections']['sliced_maxy']]
+
+    lenT, lenZ, _, _ = getProjectionDimensions(slicedMaxes[0], slicedMaxes[1])
 
     gap = 20
 
-    sizeX = lenY
-    sizeY = (lenZ * nSlices) + (gap * (nSlices-1))
+    for filename, slicedMax in zip(filenames, slicedMaxes):
+        
+        nSlices = slicedMax.shape[2]
 
-    vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(sizeX,sizeY),1)
+        movieWidth = slicedMax.shape[-1]
+        movieHeight = (lenZ * nSlices) + (gap * (nSlices-1))
 
-    adjMax = scaleMax
-    adjMin = 0
+        vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
-    for i in tqdm(range(lenT)):
+        for i in tqdm(range(lenT)):
 
-        # initialize frame
-        im = np.zeros([sizeY,sizeX])
+            # initialize frame
+            im = np.zeros([movieHeight,movieWidth])
 
-        # copy max projections 
-        for j in range(nSlices):
-            im[(lenZ*j+gap*j):(lenZ*(j+1)+gap*j),:] = copy.copy(np.flip(slicedMaxX[j,i,nChannel], axis=0))
+            # copy max projections 
+            for j in range(nSlices):
+                im[(lenZ*j+gap*j):(lenZ*(j+1)+gap*j),:] = copy.copy(np.flip(slicedMax[i,nChannel,j], axis=0))
 
-        # adjust contrast
-        contrastedIm = adjustContrast(im, adjMax, adjMin)
+            # adjust contrast
+            contrastedIm = adjustContrast(im, adjMax, adjMin)
 
-        frame = cv2.applyColorMap(contrastedIm,cmapy.cmap('viridis'))
+            # invert if rock channel
+            if channel.name == 'rocks':
+                contrastedIm = 255 - contrastedIm
 
-        frame[np.where(im==0)] = [0,0,0]
+            frame = cv2.applyColorMap(contrastedIm,cmapy.cmap('viridis'))
 
-        # add time stamp
-        t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
-        cv2.putText(frame,t,(25,150),cv2.FONT_HERSHEY_SIMPLEX,6,[255,255,255],10,cv2.LINE_AA)
+            frame[np.where(im==0)] = [0,0,0]
 
-        # add scale bar
-        scaleBarXY = scaleBar(
-            posY = sizeY - 76,
-            posX = sizeX - 468,
-            height = 30,
-            length = 416,
-            text = '1 mm',
-            textOffset = 50,
-        )
-        scaleBarXY._addScaleBar(frame)
+            # add time stamp
+            t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
+            cv2.putText(frame,t,(25,150),cv2.FONT_HERSHEY_SIMPLEX,6,[255,255,255],10,cv2.LINE_AA)
 
-        # write frame
-        vid.write(frame)
+            # add scale bar
+            scaleBarXY = scaleBar(
+                posY = movieHeight - 76,
+                posX = movieWidth - 468,
+                height = 30,
+                length = 416,
+                text = '1 mm',
+                textOffset = 50,
+            )
+            scaleBarXY._addScaleBar(frame)
 
-    vid.release()
-    cv2.destroyAllWindows()
+            # write frame
+            vid.write(frame)
+
+        vid.release()
+        cv2.destroyAllWindows()
 
 def makeCompOrthoMaxVideo(root, channels):
 

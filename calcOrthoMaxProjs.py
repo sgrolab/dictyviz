@@ -6,10 +6,12 @@ from tkinter import Tk, filedialog
 import dictyviz as dv
 
 sys.path.insert(0,'Y:\\jennifer')
+cwd = os.getcwd()
+zarrFile = cwd + "/" + sys.argv[1]
 
 # select zarr file
 Tk().withdraw() 
-zarrFile = filedialog.askdirectory(initialdir='cryolite', title='Select zarr file(s)')
+#zarrFile = filedialog.askdirectory(initialdir='cryolite', title='Select zarr file(s)')
 os.chdir(zarrFile)
 outputFile = zarrFile + '\\makeOrthoMaxProjMovies_out.txt'
 print(zarrFile)
@@ -28,14 +30,5 @@ with open(outputFile, 'w') as f:
 
     # calculate max projections
     dv.calcMaxProjections(root, res_lvl=0)
+    dv.calcSlicedMaxProjections(root, res_lvl=0)
     print('Max projections calculated at ', datetime.datetime.now(), file=f)
-
-    # create movies group
-    dv.createZarrGroup(root, 'movies')
-    os.chdir(zarrFile + '\\movies')
-    scaleMax = 700
-
-    # make max projection videos
-    dv.makeOrthoMaxVideo('cells_orthomax.avi', root, cells, scaleMax)
-    dv.makeOrthoMaxVideo('rocks_orthomax.avi', root, rocks, scaleMax)
-    print('OrthoMax videos created at ', datetime.datetime.now(), '\n', file=f)
