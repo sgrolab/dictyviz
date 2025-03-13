@@ -7,11 +7,11 @@ import dictyviz as dv
 
 sys.path.insert(0,'Y:\\jennifer')
 cwd = os.getcwd()
-zarrFile = cwd + "/" + sys.argv[1]
+#zarrFile = cwd + "/" + sys.argv[1]
 
 # select zarr file
 Tk().withdraw() 
-#zarrFile = filedialog.askdirectory(initialdir='cryolite', title='Select zarr file(s)')
+zarrFile = filedialog.askdirectory(initialdir='cryolite', title='Select zarr file(s)')
 os.chdir(zarrFile)
 outputFile = zarrFile + '\\makeOrthoMaxProjMovies_out.txt'
 print(zarrFile)

@@ -45,7 +45,7 @@ def calcMaxProjections(root, res_lvl=0):
     maxProjectionsGroup = createZarrGroup(analysisGroup, 'max_projections')
 
     # create zarr arrays for each max projection 
-    maxZ = maxProjectionsGroup.zeros('maxz',shape=(lenT,lenCh,lenY,lenX),chunks=(1,lenCh,lenY,lenX))
+    maxZ = maxProjectionsGroup.zeros('maxz',shape=(lenT,lenCh,2,lenY,lenX),chunks=(1,lenCh,2,lenY,lenX))
     maxX = maxProjectionsGroup.zeros('maxx',shape=(lenT,lenCh,lenZ,lenY),chunks=(1,lenCh,lenZ,lenY))
     maxY = maxProjectionsGroup.zeros('maxy',shape=(lenT,lenCh,lenZ,lenX),chunks=(1,lenCh,lenZ,lenX))
 
@@ -53,7 +53,7 @@ def calcMaxProjections(root, res_lvl=0):
     for i in tqdm(range(lenT)):
         for j in range(lenCh):
             frame = resArray[i, j, :, :, :]
-            maxZ[i,j] = np.max(frame,axis=0)
+            maxZ[i,j] = [np.max(frame,axis=0), np.argmax(frame,axis=0)]
             maxX[i,j] = np.max(frame,axis=2)
             maxY[i,j] = np.max(frame,axis=1)
 
@@ -159,7 +159,7 @@ def makeOrthoMaxVideo(root, channel):
 
         # copy max projections 
         im[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannel],axis=0))
-        im[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannel])
+        im[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannel,0])
         im[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannel]))
         
         contrastedIm = adjustContrast(im, adjMax, adjMin)
@@ -286,31 +286,28 @@ def makeCompOrthoMaxVideo(root, channels):
     maxY = root['analysis']['max_projections']['maxy']
     maxX = root['analysis']['max_projections']['maxx']
     
-    lenT = maxZ.shape[0]
-    lenZ = maxY.shape[2]
-    lenY = maxZ.shape[2]
-    lenX = maxZ.shape[3]
-    
+    lenT, lenZ, lenY, lenX = getProjectionDimensions(maxX, maxY)
+
     gap = 20
 
-    xz = lenX + lenZ + gap
-    yz = lenY + lenZ + gap
+    movieWidth = lenX + lenZ + gap
+    movieHeight = lenY + lenZ + gap
 
-    vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(xz,yz),1)
+    vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
     for i in tqdm(range(lenT)):
         
-        imCells = np.zeros([yz,xz])
-        imRocks = np.zeros([yz,xz])
+        imCells = np.zeros([movieHeight,movieWidth])
+        imRocks = np.zeros([movieHeight,movieWidth])
 
         # copy max projections 
         imCells[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannelCells],axis=0))
-        imCells[(lenZ+gap):yz,0:lenX] = copy.copy(maxZ[i,nChannelCells])
-        imCells[(lenZ+gap):yz,(lenX+gap):xz] = copy.copy(np.transpose(maxX[i,nChannelCells]))
+        imCells[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannelCells,0])
+        imCells[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannelCells]))
 
         imRocks[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannelRocks],axis=0))
-        imRocks[(lenZ+gap):yz,0:lenX] = copy.copy(maxZ[i,nChannelRocks])
-        imRocks[(lenZ+gap):yz,(lenX+gap):xz] = copy.copy(np.transpose(maxX[i,nChannelRocks]))
+        imRocks[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannelRocks,0])
+        imRocks[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannelRocks]))
         
         contrastedImCells = adjustContrast(imCells, scaleMaxCells, adjMinCells)
         contrastedImRocks = adjustContrast(imRocks, scaleMaxRocks, adjMinRocks)
@@ -329,7 +326,7 @@ def makeCompOrthoMaxVideo(root, channels):
 
         # add scale bars
         scaleBarXY = scaleBar(
-            posY = yz - 20, #76
+            posY = movieHeight - 20, #76
             posX = lenX - 50, #468
             height = 10, #30
             length = 42, #416
@@ -354,3 +351,86 @@ def makeCompOrthoMaxVideo(root, channels):
     vid.release()
     cv2.destroyAllWindows()
 
+def generateZDepthColormap(lenZ, cmap):
+    #generates a colormap based on z depth, red is the highest z depth, blue is the lowest
+    zDepthColormap = [None]*lenZ
+    for slice in range(0,lenZ):
+        zDepthGrayVal = round((slice/lenZ)*255)
+        zDepthColormap[slice] = cmapy.color(cmap, zDepthGrayVal)
+    return zDepthColormap
+
+def makeZDepthOrthoMaxVideo(root, channel, cmap):
+
+    filename = channel.name + '_zdepth_orthomax.avi'
+    nChannel = channel.nChannel
+    adjMax = channel.scaleMax
+    adjMin = channel.adjMin
+
+    maxZ = root['analysis']['max_projections']['maxz']
+    maxY = root['analysis']['max_projections']['maxy']
+    maxX = root['analysis']['max_projections']['maxx']
+    
+    lenT, lenZ, lenY, lenX = getProjectionDimensions(maxX, maxY)
+
+    zDepthColormap = generateZDepthColormap(lenZ, cmap)
+    
+    gap = 20
+
+    movieWidth = lenX
+    movieHeight = lenY
+
+    vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
+
+    for i in tqdm(range(lenT)):
+
+        # initialize frame 
+        im = np.zeros([movieHeight,movieWidth])
+
+        # generate a scaled image for each z slice
+        im = copy.copy(maxZ[i,nChannel,0])
+        contrastedIm = adjustContrast(im, adjMax, adjMin)
+        # invert if rock channel
+        if channel.name == 'rocks':
+            contrastedIm = 255 - contrastedIm
+        scaledIm = np.divide(contrastedIm,255)
+        scaledImGrayscale = cv2.merge([scaledIm, scaledIm, scaledIm])
+
+        # apply z depth colormap based on z depths in slice
+        zDepths = maxZ[i,nChannel,1]
+        # TODO: make into functions for XY color assignment and XZ/YZ color assignment
+        imBlues = np.zeros([lenY, lenX]).astype(int)
+        imGreens = np.zeros([lenY, lenX]).astype(int)
+        imReds = np.zeros([lenY, lenX]).astype(int)
+        for y in range(0,lenY):
+            for x in range(0,lenX):
+                zDepth = int(zDepths[y,x])
+                imBlues[y,x] = zDepthColormap[zDepth][0]
+                imGreens[y,x] = zDepthColormap[zDepth][1]
+                imReds[y,x] = zDepthColormap[zDepth][2]
+        imBGRVals = cv2.merge([imBlues, imGreens, imReds])
+
+        frame = np.multiply(scaledImGrayscale,imBGRVals).astype('uint8')
+
+        frame[np.where(scaledIm==0)] = [0,0,0]
+
+        # time stamp
+        t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
+        #cv2.putText(frame,t,(25,lenZ+gap+150),cv2.FONT_HERSHEY_SIMPLEX,6,[255,255,255],10,cv2.LINE_AA)
+        cv2.putText(frame,t,(15,30),cv2.FONT_HERSHEY_SIMPLEX,1,[255,255,255],3,cv2.LINE_AA)
+
+        # add scale bars
+        scaleBarXY = scaleBar(
+            posY = movieHeight - 76, #76
+            posX = lenX - 468, #468
+            height = 30, #30
+            length = 416, #416
+            text = '1 mm', #1 mm
+            textOffset = 50, #50
+        )
+        scaleBarXY._addScaleBar(frame)
+
+        # write frame 
+        vid.write(frame)
+
+    vid.release()
+    cv2.destroyAllWindows()
