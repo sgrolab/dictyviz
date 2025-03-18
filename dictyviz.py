@@ -2,6 +2,7 @@
 
 import copy
 import math
+import os
 
 import zarr
 import cv2
@@ -91,6 +92,16 @@ def calcSlicedMaxProjections(root, res_lvl=0):
                 frame = resArray[i,j,:,rangeY[0]:rangeY[1],:]
                 slicedMaxY[i,j,k] = np.max(frame,axis=1)
 
+def generateUniqueFilename(filename, ext):
+    i = 1
+    while os.path.exists(filename + ext):
+        if i == 1:
+            filename = filename +'_1'
+        else:
+            filename = filename[:-1] + str(i)
+        i += 1
+    return filename + ext
+
 # replace with an adjustable auto contrast of some sort
 def calcScaleMax(root):
     maxZ = root['analysis']['max_projections']['maxz']
@@ -132,9 +143,9 @@ class scaleBar:
         cv2.putText(frame, self.text, (self.posX, self.posY-10), #self.posY-50
                     cv2.FONT_HERSHEY_SIMPLEX, 0.1, [255,255,255], 1, cv2.LINE_AA)
 
-def makeOrthoMaxVideo(root, channel):
+def makeOrthoMaxVideo(root, channel, ext='.avi'):
 
-    filename = channel.name + '_orthomax.avi'
+    filename = generateUniqueFilename(channel.name + '_orthomax', ext)
     nChannel = channel.nChannel
     adjMax = channel.scaleMax
     adjMin = channel.adjMin
@@ -204,9 +215,10 @@ def makeOrthoMaxVideo(root, channel):
     vid.release()
     cv2.destroyAllWindows()
 
-def makeSlicedOrthoMaxVideos(root, channel):
+def makeSlicedOrthoMaxVideos(root, channel, ext='.avi'):
 
-    filenames = [channel.name + '_X_sliced_orthomax.avi', channel.name + '_Y_sliced_orthomax.avi']
+    filenames = [generateUniqueFilename(channel.name + '_X_sliced_orthomax', ext),
+                 generateUniqueFilename(channel.name + '_Y_sliced_orthomax', ext)]
     nChannel = channel.nChannel
     adjMax = channel.scaleMax
     adjMin = channel.adjMin
@@ -267,9 +279,9 @@ def makeSlicedOrthoMaxVideos(root, channel):
         vid.release()
         cv2.destroyAllWindows()
 
-def makeCompOrthoMaxVideo(root, channels):
+def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
 
-    filename = 'comp_orthomax.avi'
+    filename = generateUniqueFilename('comp_orthomax', ext)
 
     # set channel values
     for channel in channels:
@@ -359,9 +371,9 @@ def generateZDepthColormap(lenZ, cmap):
         zDepthColormap[slice] = cmapy.color(cmap, zDepthGrayVal)
     return zDepthColormap
 
-def makeZDepthOrthoMaxVideo(root, channel, cmap):
+def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
-    filename = channel.name + '_zdepth_orthomax.avi'
+    filename = generateUniqueFilename(channel.name + '_zdepth_orthomax', ext)
     nChannel = channel.nChannel
     adjMax = channel.scaleMax
     adjMin = channel.adjMin
