@@ -371,6 +371,14 @@ def generateZDepthColormap(lenZ, cmap):
         zDepthColormap[slice] = cmapy.color(cmap, zDepthGrayVal)
     return zDepthColormap
 
+def invertAndScale(channel, im):
+    # invert if rock channel
+    if channel == 'rocks':
+        im = 255 - im
+    scaledIm = np.divide(im,255)
+    scaledImGrayscale = cv2.merge([scaledIm, scaledIm, scaledIm])
+    return scaledImGrayscale
+
 def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
     filename = generateUniqueFilename(channel.name + '_zdepth_orthomax', ext)
@@ -388,42 +396,82 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
     
     gap = 20
 
-    movieWidth = lenX
-    movieHeight = lenY
+    movieWidth = lenX + lenZ + gap
+    movieHeight = lenY + lenZ + gap
 
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
     for i in tqdm(range(lenT)):
 
-        # initialize frame 
-        im = np.zeros([movieHeight,movieWidth])
-
-        # generate a scaled image for each z slice
-        im = copy.copy(maxZ[i,nChannel,0])
-        contrastedIm = adjustContrast(im, adjMax, adjMin)
-        # invert if rock channel
-        if channel.name == 'rocks':
-            contrastedIm = 255 - contrastedIm
-        scaledIm = np.divide(contrastedIm,255)
-        scaledImGrayscale = cv2.merge([scaledIm, scaledIm, scaledIm])
+        # generate a scaled image for the XY projection
+        imXY = copy.copy(maxZ[i,nChannel,0])
+        contrastedImXY = adjustContrast(imXY, adjMax, adjMin)
+        scaledImGrayscaleXY = invertAndScale(channel.name, contrastedImXY)
 
         # apply z depth colormap based on z depths in slice
         zDepths = maxZ[i,nChannel,1]
         # TODO: make into functions for XY color assignment and XZ/YZ color assignment
-        imBlues = np.zeros([lenY, lenX]).astype(int)
-        imGreens = np.zeros([lenY, lenX]).astype(int)
-        imReds = np.zeros([lenY, lenX]).astype(int)
+        imBluesXY = np.zeros([lenY, lenX]).astype(int)
+        imGreensXY = np.zeros([lenY, lenX]).astype(int)
+        imRedsXY = np.zeros([lenY, lenX]).astype(int)
         for y in range(0,lenY):
             for x in range(0,lenX):
                 zDepth = int(zDepths[y,x])
-                imBlues[y,x] = zDepthColormap[zDepth][0]
-                imGreens[y,x] = zDepthColormap[zDepth][1]
-                imReds[y,x] = zDepthColormap[zDepth][2]
-        imBGRVals = cv2.merge([imBlues, imGreens, imReds])
+                imBluesXY[y,x] = zDepthColormap[zDepth][0]
+                imGreensXY[y,x] = zDepthColormap[zDepth][1]
+                imRedsXY[y,x] = zDepthColormap[zDepth][2]
+        imBGRValsXY = cv2.merge([imBluesXY, imGreensXY, imRedsXY])
 
-        frame = np.multiply(scaledImGrayscale,imBGRVals).astype('uint8')
+        frameXY = np.multiply(scaledImGrayscaleXY,imBGRValsXY).astype('uint8')
 
-        frame[np.where(scaledIm==0)] = [0,0,0]
+
+        # generate a scaled image for the XZ projection
+        imXZ = copy.copy(maxY[i,nChannel])
+        contrastedImXZ = adjustContrast(imXZ, adjMax, adjMin)
+        scaledImGrayscaleXZ = invertAndScale(channel.name, contrastedImXZ)
+
+        # apply z depth colormap based on z depths in slice
+        imBluesXZ = np.zeros([lenZ, lenX]).astype(int)
+        imGreensXZ = np.zeros([lenZ, lenX]).astype(int)
+        imRedsXZ = np.zeros([lenZ, lenX]).astype(int)
+        for z in range(0,lenZ):
+            for x in range(0,lenX):
+                zDepth = z
+                imBluesXZ[z,x] = zDepthColormap[zDepth][0]
+                imGreensXZ[z,x] = zDepthColormap[zDepth][1]
+                imRedsXZ[z,x] = zDepthColormap[zDepth][2]
+        imBGRValsXZ = cv2.merge([imBluesXZ, imGreensXZ, imRedsXZ])
+
+        frameXZ = np.multiply(scaledImGrayscaleXZ,imBGRValsXZ).astype('uint8')
+        frameXZ = np.flip(frameXZ, axis=0)
+
+        # generate a scaled image for the YZ projection
+        imYZ = copy.copy(np.transpose(maxX[i,nChannel]))
+        contrastedImYZ = adjustContrast(imYZ, adjMax, adjMin)
+        scaledImGrayscaleYZ = invertAndScale(channel.name, contrastedImYZ)
+
+        # apply z depth colormap based on z depths in slice
+        imBluesYZ = np.zeros([lenY, lenZ]).astype(int)
+        imGreensYZ = np.zeros([lenY, lenZ]).astype(int)
+        imRedsYZ = np.zeros([lenY, lenZ]).astype(int)
+        for y in range(0,lenY):
+            for z in range(0,lenZ):
+                zDepth = z
+                imBluesYZ[y,z] = zDepthColormap[zDepth][0]
+                imGreensYZ[y,z] = zDepthColormap[zDepth][1]
+                imRedsYZ[y,z] = zDepthColormap[zDepth][2]
+        imBGRValsYZ = cv2.merge([imBluesYZ, imGreensYZ, imRedsYZ])
+
+        frameYZ = np.multiply(scaledImGrayscaleYZ,imBGRValsYZ).astype('uint8')
+
+        # initialize frame 
+        frame = np.zeros([movieHeight,movieWidth,3]).astype('uint8')
+
+        frame[0:lenZ,0:lenX,:] = frameXZ
+        frame[(lenZ+gap):movieHeight,0:lenX,:] = frameXY
+        frame[(lenZ+gap):movieHeight,(lenX+gap):movieWidth,:] = frameYZ
+
+        #frame[np.where(scaledIm==0)] = [0,0,0]
 
         # time stamp
         t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
