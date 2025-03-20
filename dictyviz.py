@@ -4,6 +4,7 @@ import copy
 import math
 import os
 
+import xml.etree.ElementTree as et
 import zarr
 import cv2
 import cmapy
@@ -25,10 +26,20 @@ def createZarrGroup(root, groupName):
         group = root.create_group(groupName)
     return group
 
+def getVoxelDimsFromXML(xmlFile, res_lvl=0):
+    XMLTree = et.parse(xmlFile)
+    XMLRoot = XMLTree.getroot()
+    imageMetaData = XMLRoot[res_lvl][0]
+    pixelSizeX = float(imageMetaData.get('PhysicalSizeX'))
+    pixelSizeY = float(imageMetaData.get('PhysicalSizeY'))
+    pixelSizeZ = float(imageMetaData.get('PhysicalSizeZ'))
+    return [pixelSizeX, pixelSizeY, pixelSizeZ]
+
 class channel:
-    def __init__(self, name, nChannel, scaleMax, adjMin=0):
+    def __init__(self, name, nChannel, voxelDims, scaleMax, adjMin=0):
         self.name = name
         self.nChannel = nChannel
+        self.voxelDims = voxelDims
         self.scaleMax = scaleMax
         self.adjMin = adjMin
 
