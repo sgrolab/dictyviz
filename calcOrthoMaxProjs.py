@@ -4,6 +4,7 @@ import datetime
 import zarr
 from tkinter import Tk, filedialog
 import dictyviz as dv
+from dictyviz import channel
 
 sys.path.insert(0,'Y:\\jennifer')
 cwd = os.getcwd()
@@ -18,9 +19,11 @@ print(zarrFile)
 with open(outputFile, 'w') as f:
     print('Zarr file:', zarrFile, '\n', file=f)
 
+    voxelDims = dv.getVoxelDimsFromXML(zarrFile)
+
     # define channels
-    cells = 0
-    rocks = 1
+    cells_red = channel(name='cells_red', nChannel=0, voxelDims=voxelDims, scaleMax=400)
+    cells_green = channel(name='cells_green', nChannel=1, voxelDims=voxelDims, scaleMax=1200)
 
     # create root store and analysis group
     dv.createRootStore(zarrFile)
