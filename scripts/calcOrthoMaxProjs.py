@@ -3,8 +3,8 @@ import os
 import datetime
 import zarr
 from tkinter import Tk, filedialog
-import dictyviz as dv
-from dictyviz import channel
+import src.dictyviz as dv
+from src.dictyviz import channel
 
 sys.path.insert(0,'Y:\\jennifer')
 cwd = os.getcwd()

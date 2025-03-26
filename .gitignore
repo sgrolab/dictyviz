@@ -1,4 +1,7 @@
 dictyviz.code-workspace
+
+jupyter/*
+
 __pycache__/
 *.pyc
 *.pyo

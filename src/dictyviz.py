@@ -119,8 +119,10 @@ def calcScaleMax(root):
     scaleMax = np.max(maxZ)
     return scaleMax
 
-def getProjectionDimensions(maxX, maxY):
+def getProjectionDimensions(root):
     # return the dimensions of the max projections
+    maxX = root['analysis']['max_projections']['maxx']
+    maxY = root['analysis']['max_projections']['maxy']
     lenT = maxX.shape[0]
     lenZ = maxX.shape[-2]
     lenY = maxX.shape[-1]
@@ -136,23 +138,36 @@ def adjustContrast(im, adjMax, adjMin):
     return(contrastedIm)
 
 class scaleBar:
-    def __init__(self, posY, posX, height, length, text, textOffset):
+    def __init__(self, posY, posX, heightInPx, lengthInPx, length, textOffset):
         self.posY = posY
         self.posX = posX
-        self.height = height
+        self.heightInPx = heightInPx
+        self.lengthInPx = lengthInPx
         self.length = length
-        self.text = text
+        self.units = 'um'
+        self.text = str(length) + ' ' + self.units
         self.textOffset = textOffset
 
     def _addScaleBar(self, frame):
-        frame[self.posY:self.posY+self.height, self.posX:self.posX+self.length,:] = 255
+        #TODO: change to a relationship between font size and px length since it depends on voxel size
+        fontSize = self.length*.003
+        frame[self.posY:self.posY+self.heightInPx, self.posX:self.posX+self.lengthInPx,:] = 255
         cv2.putText(frame, self.text, (self.posX+self.textOffset, self.posY-10), #self.posY-30
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, [255,255,255], 3, cv2.LINE_AA) #3, 6
+                    cv2.FONT_HERSHEY_SIMPLEX, fontSize, [255,255,255], round(fontSize*2), cv2.LINE_AA) #3, 6
 
     def _addScaleBarZ(self, frame):
-        frame[self.posY:self.posY+self.height, self.posX:self.posX+self.length,:] = 255
+        frame[self.posY:self.posY+self.heightInPx, self.posX:self.posX+self.lengthInPx,:] = 255
         cv2.putText(frame, self.text, (self.posX, self.posY-10), #self.posY-50
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.1, [255,255,255], 1, cv2.LINE_AA)
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, [255,255,255], 2, cv2.LINE_AA)
+        
+def getScaleBarLength(root, voxelDims):
+    scaleBarLengths = [10, 50, 100, 500, 1000, 5000] # in um
+
+    projDimsPx = getProjectionDimensions(root)
+    projDimsUm = [projDimsPx[3]*voxelDims[0], projDimsPx[2]*voxelDims[1], projDimsPx[1]*voxelDims[2]]
+    approxScaleBarLength = projDimsUm[1]/5
+    scaleBarLength = min(scaleBarLengths, key=lambda x:abs(x-approxScaleBarLength))
+    return scaleBarLength
 
 def makeOrthoMaxVideo(root, channel, ext='.avi'):
 
@@ -165,13 +180,38 @@ def makeOrthoMaxVideo(root, channel, ext='.avi'):
     maxY = root['analysis']['max_projections']['maxy']
     maxX = root['analysis']['max_projections']['maxx']
     
-    lenT, lenZ, lenY, lenX = getProjectionDimensions(maxX, maxY)
+    lenT, lenZ, lenY, lenX = getProjectionDimensions(root)
     
     gap = 20
 
     movieWidth = lenX + lenZ + gap
     movieHeight = lenY + lenZ + gap
 
+    # define scale bars
+    scaleBarLength = getScaleBarLength(root, channel.voxelDims)
+    scaleBarLengthInPx = int(scaleBarLength//channel.voxelDims[0])
+    scaleBarXY = scaleBar(
+        posY = movieHeight - (scaleBarLengthInPx//10), #76
+        posX = lenX - scaleBarLengthInPx, #468
+        heightInPx = scaleBarLengthInPx//10, #30
+        lengthInPx = scaleBarLengthInPx, #416
+        length = scaleBarLength,
+        textOffset = scaleBarLength//100, #50
+    )
+    if scaleBarXY.length >= 1000:
+        scaleBarXY.length = scaleBarXY.length/1000
+        scaleBarXY.units = 'mm'
+        scaleBarXY.text = str(scaleBarXY.length) + ' ' + scaleBarXY.units
+    
+    scaleBarXZ = scaleBar(
+        posY = lenZ,
+        posX = lenX + gap,
+        heightInPx = lenZ//10, #30
+        lengthInPx = lenZ,
+        length = int(lenZ*channel.voxelDims[2]),
+        textOffset = 5, #50
+    )
+    
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
     for i in tqdm(range(lenT)):
@@ -196,28 +236,11 @@ def makeOrthoMaxVideo(root, channel, ext='.avi'):
         
         # time stamp
         t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
-        #cv2.putText(frame,t,(25,lenZ+gap+150),cv2.FONT_HERSHEY_SIMPLEX,6,[255,255,255],10,cv2.LINE_AA)
-        cv2.putText(frame,t,(15,lenZ+gap+30),cv2.FONT_HERSHEY_SIMPLEX,1,[255,255,255],3,cv2.LINE_AA)
+        cv2.putText(frame,t,(25,lenZ+gap+150),cv2.FONT_HERSHEY_SIMPLEX,3,[255,255,255],6,cv2.LINE_AA)
+        #cv2.putText(frame,t,(15,lenZ+gap+30),cv2.FONT_HERSHEY_SIMPLEX,1,[255,255,255],3,cv2.LINE_AA)
 
         # add scale bars
-        scaleBarXY = scaleBar(
-            posY = movieHeight - 20, #76
-            posX = lenX - 50, #468
-            height = 10, #30
-            length = 42, #416
-            text = '100 um', #1 mm
-            textOffset = 0, #50
-        )
         scaleBarXY._addScaleBar(frame)
-
-        scaleBarXZ = scaleBar(
-            posY = lenZ,
-            posX = lenX + gap,
-            height = 10, #30
-            length = lenZ,
-            text = str(lenZ * 2) + ' um',
-            textOffset = 5, #50
-        )
         scaleBarXZ._addScaleBarZ(frame)
 
         # write frame 
@@ -236,7 +259,7 @@ def makeSlicedOrthoMaxVideos(root, channel, ext='.avi'):
         
     slicedMaxes = [root['analysis']['sliced_max_projections']['sliced_maxx'], root['analysis']['sliced_max_projections']['sliced_maxy']]
 
-    lenT, lenZ, _, _ = getProjectionDimensions(slicedMaxes[0], slicedMaxes[1])
+    lenT, lenZ, _, _ = getProjectionDimensions(root)
 
     gap = 20
 
@@ -246,6 +269,22 @@ def makeSlicedOrthoMaxVideos(root, channel, ext='.avi'):
 
         movieWidth = slicedMax.shape[-1]
         movieHeight = (lenZ * nSlices) + (gap * (nSlices-1))
+
+        # define scale bar
+        scaleBarLength = getScaleBarLength(root, channel.voxelDims)
+        scaleBarLengthInPx = int(scaleBarLength//channel.voxelDims[0])
+        scaleBarXY = scaleBar(
+            posY = movieHeight - (scaleBarLengthInPx//10), #76
+            posX = movieWidth - scaleBarLengthInPx, #468
+            heightInPx = scaleBarLengthInPx//10, #30
+            lengthInPx = scaleBarLengthInPx, #416
+            length = scaleBarLength,
+            textOffset = scaleBarLength//100, #50
+        )
+        if scaleBarXY.length >= 1000:
+            scaleBarXY.length = scaleBarXY.length/1000
+            scaleBarXY.units = 'mm'
+            scaleBarXY.text = str(scaleBarXY.length) + ' ' + scaleBarXY.units
 
         vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
@@ -274,14 +313,6 @@ def makeSlicedOrthoMaxVideos(root, channel, ext='.avi'):
             cv2.putText(frame,t,(25,150),cv2.FONT_HERSHEY_SIMPLEX,6,[255,255,255],10,cv2.LINE_AA)
 
             # add scale bar
-            scaleBarXY = scaleBar(
-                posY = movieHeight - 76,
-                posX = movieWidth - 468,
-                height = 30,
-                length = 416,
-                text = '1 mm',
-                textOffset = 50,
-            )
             scaleBarXY._addScaleBar(frame)
 
             # write frame
@@ -309,12 +340,34 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
     maxY = root['analysis']['max_projections']['maxy']
     maxX = root['analysis']['max_projections']['maxx']
     
-    lenT, lenZ, lenY, lenX = getProjectionDimensions(maxX, maxY)
+    lenT, lenZ, lenY, lenX = getProjectionDimensions(root)
 
     gap = 20
 
     movieWidth = lenX + lenZ + gap
     movieHeight = lenY + lenZ + gap
+
+    # define scale bars
+    scaleBarLength = getScaleBarLength(root, channel.voxelDims)
+    scaleBarXY = scaleBar(
+        posY = movieHeight - 20, #76
+        posX = lenX - 50, #468
+        heightInPx = int(scaleBarLength/channel.voxelDims[0]//10), #30
+        lengthInPx = int(scaleBarLength//channel.voxelDims[0]), #416
+        length = scaleBarLength,
+        textOffset = scaleBarLength//100, #50
+    )
+    if scaleBarXY.length == 1000:
+        scaleBarXY.text = '1 mm'
+    
+    scaleBarXZ = scaleBar(
+        posY = lenZ,
+        posX = lenX + gap,
+        heightInPx = lenZ//10, #30
+        lengthInPx = lenZ,
+        length = int(lenZ*channel.voxelDims[2]),
+        textOffset = 5, #50
+    )
 
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
@@ -348,24 +401,7 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
         cv2.putText(frame,t,(15,lenZ+gap+30),cv2.FONT_HERSHEY_SIMPLEX,1,[255,255,255],3,cv2.LINE_AA)
 
         # add scale bars
-        scaleBarXY = scaleBar(
-            posY = movieHeight - 20, #76
-            posX = lenX - 50, #468
-            height = 10, #30
-            length = 42, #416
-            text = '100 um', #1 mm
-            textOffset = 0, #50
-        )
         scaleBarXY._addScaleBar(frame)
-
-        scaleBarXZ = scaleBar(
-            posY = lenZ,
-            posX = lenX + gap,
-            height = 10, #30
-            length = lenZ,
-            text = str(lenZ * 2) + ' um',
-            textOffset = 5, #50
-        )
         scaleBarXZ._addScaleBarZ(frame)
 
         # write frame 
@@ -401,7 +437,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
     maxY = root['analysis']['max_projections']['maxy']
     maxX = root['analysis']['max_projections']['maxx']
     
-    lenT, lenZ, lenY, lenX = getProjectionDimensions(maxX, maxY)
+    lenT, lenZ, lenY, lenX = getProjectionDimensions(root)
 
     zDepthColormap = generateZDepthColormap(lenZ, cmap)
     
@@ -409,6 +445,19 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
     movieWidth = lenX + lenZ + gap
     movieHeight = lenY + lenZ + gap
+
+    # define scale bars
+    scaleBarLength = getScaleBarLength(root, channel.voxelDims)
+    scaleBarXY = scaleBar(
+        posY = movieHeight - 20, #76
+        posX = lenX - 50, #468
+        heightInPx = int(scaleBarLength/channel.voxelDims[0]//10), #30
+        lengthInPx = int(scaleBarLength//channel.voxelDims[0]), #416
+        length = scaleBarLength,
+        textOffset = scaleBarLength//100, #50
+    )
+    if scaleBarXY.length == 1000:
+        scaleBarXY.text = '1 mm'
 
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
@@ -490,14 +539,6 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
         cv2.putText(frame,t,(15,30),cv2.FONT_HERSHEY_SIMPLEX,1,[255,255,255],3,cv2.LINE_AA)
 
         # add scale bars
-        scaleBarXY = scaleBar(
-            posY = movieHeight - 76, #76
-            posX = lenX - 468, #468
-            height = 30, #30
-            length = 416, #416
-            text = '1 mm', #1 mm
-            textOffset = 50, #50
-        )
         scaleBarXY._addScaleBar(frame)
 
         # write frame 
