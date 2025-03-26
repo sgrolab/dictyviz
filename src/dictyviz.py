@@ -148,26 +148,38 @@ class scaleBar:
         self.text = str(length) + ' ' + self.units
         self.textOffset = textOffset
 
-    def _addScaleBar(self, frame):
-        #TODO: change to a relationship between font size and px length since it depends on voxel size
-        fontSize = self.length*.003
+    def _addScaleBar(self, frame, font):
         frame[self.posY:self.posY+self.heightInPx, self.posX:self.posX+self.lengthInPx,:] = 255
         cv2.putText(frame, self.text, (self.posX+self.textOffset, self.posY-10), #self.posY-30
-                    cv2.FONT_HERSHEY_SIMPLEX, fontSize, [255,255,255], round(fontSize*2), cv2.LINE_AA) #3, 6
+                    font.font, font.fontSize, [255,255,255], font.lineThickness, cv2.LINE_AA) #3, 6
 
-    def _addScaleBarZ(self, frame):
+    def _addScaleBarZ(self, frame, font):
         frame[self.posY:self.posY+self.heightInPx, self.posX:self.posX+self.lengthInPx,:] = 255
         cv2.putText(frame, self.text, (self.posX, self.posY-10), #self.posY-50
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, [255,255,255], 2, cv2.LINE_AA)
+                    font.font, font.fontSize, [255,255,255], font.lineThickness, cv2.LINE_AA)
         
 def getScaleBarLength(root, voxelDims):
-    scaleBarLengths = [10, 50, 100, 500, 1000, 5000] # in um
+    scaleBarLengths = [10, 50, 100, 500, 1000, 5000, 10000, 50000] # in um
 
     projDimsPx = getProjectionDimensions(root)
     projDimsUm = [projDimsPx[3]*voxelDims[0], projDimsPx[2]*voxelDims[1], projDimsPx[1]*voxelDims[2]]
     approxScaleBarLength = projDimsUm[1]/5
     scaleBarLength = min(scaleBarLengths, key=lambda x:abs(x-approxScaleBarLength))
     return scaleBarLength
+
+class font:
+    def __init__(self, font, fontSize=0):
+        self.font = font
+        self.fontSize = fontSize
+        self.lineThickness = fontSize*2
+
+    def _getFontSize(self, scaleBar):
+        (textWidth, _), _ = cv2.getTextSize(scaleBar.text, self.font, self.fontSize, self.lineThickness)
+        while textWidth <= scaleBar.lengthInPx/2:
+            self.fontSize += .1
+            (textWidth, _), _ = cv2.getTextSize(scaleBar.text, self.font, self.fontSize, self.lineThickness)
+        self.lineThickness = round(self.fontSize*2)
+        return self.fontSize, self.lineThickness
 
 def makeOrthoMaxVideo(root, channel, ext='.avi'):
 
@@ -211,43 +223,53 @@ def makeOrthoMaxVideo(root, channel, ext='.avi'):
         length = int(lenZ*channel.voxelDims[2]),
         textOffset = 5, #50
     )
+
+    # define font
+    fontXY = font(cv2.FONT_HERSHEY_SIMPLEX)
+    fontXY.size, fontXY.lineThickness = fontXY._getFontSize(scaleBarXY)
+
+    fontXZ= font(cv2.FONT_HERSHEY_SIMPLEX)
+    fontXZ.size, fontXZ.lineThickness = fontXZ._getFontSize(scaleBarXZ)
     
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
-    for i in tqdm(range(lenT)):
+    try: 
+        for i in tqdm(range(lenT)):
 
-        # initialize frame 
-        im = np.zeros([movieHeight,movieWidth])
+            # initialize frame 
+            im = np.zeros([movieHeight,movieWidth])
 
-        # copy max projections 
-        im[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannel],axis=0))
-        im[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannel,0])
-        im[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannel]))
-        
-        contrastedIm = adjustContrast(im, adjMax, adjMin)
+            # copy max projections 
+            im[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannel],axis=0))
+            im[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannel,0])
+            im[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannel]))
+            
+            contrastedIm = adjustContrast(im, adjMax, adjMin)
 
-        # invert if rock channel
-        if channel.name == 'rocks':
-            contrastedIm = 255 - contrastedIm
+            # invert if rock channel
+            if channel.name == 'rocks':
+                contrastedIm = 255 - contrastedIm
 
-        frame = cv2.applyColorMap(contrastedIm,cmapy.cmap('viridis'))
+            frame = cv2.applyColorMap(contrastedIm,cmapy.cmap('viridis'))
 
-        frame[np.where(im==0)] = [0,0,0]
-        
-        # time stamp
-        t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
-        cv2.putText(frame,t,(25,lenZ+gap+150),cv2.FONT_HERSHEY_SIMPLEX,3,[255,255,255],6,cv2.LINE_AA)
-        #cv2.putText(frame,t,(15,lenZ+gap+30),cv2.FONT_HERSHEY_SIMPLEX,1,[255,255,255],3,cv2.LINE_AA)
+            frame[np.where(im==0)] = [0,0,0]
+            
+            # time stamp
+            t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
+            cv2.putText(frame,t,(25,lenZ+gap),fontXY.font,fontXY.fontSize,[255,255,255],fontXY.lineThickness,cv2.LINE_AA)
 
-        # add scale bars
-        scaleBarXY._addScaleBar(frame)
-        scaleBarXZ._addScaleBarZ(frame)
+            # add scale bars
+            scaleBarXY._addScaleBar(frame, fontXY)
+            scaleBarXZ._addScaleBarZ(frame, fontXZ)
 
-        # write frame 
-        vid.write(frame)
+            # write frame 
+            vid.write(frame)
 
-    vid.release()
-    cv2.destroyAllWindows()
+        vid.release()
+        cv2.destroyAllWindows()
+    except:
+        vid.release()
+        cv2.destroyAllWindows()
 
 def makeSlicedOrthoMaxVideos(root, channel, ext='.avi'):
 
@@ -286,40 +308,48 @@ def makeSlicedOrthoMaxVideos(root, channel, ext='.avi'):
             scaleBarXY.units = 'mm'
             scaleBarXY.text = str(scaleBarXY.length) + ' ' + scaleBarXY.units
 
+        # define font
+        fontXY = font(cv2.FONT_HERSHEY_SIMPLEX)
+        fontXY.size, fontXY.lineThickness = fontXY._getFontSize(scaleBarXY)
+
         vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
-        for i in tqdm(range(lenT)):
+        try:
+            for i in tqdm(range(lenT)):
 
-            # initialize frame
-            im = np.zeros([movieHeight,movieWidth])
+                # initialize frame
+                im = np.zeros([movieHeight,movieWidth])
 
-            # copy max projections 
-            for j in range(nSlices):
-                im[(lenZ*j+gap*j):(lenZ*(j+1)+gap*j),:] = copy.copy(np.flip(slicedMax[i,nChannel,j], axis=0))
+                # copy max projections 
+                for j in range(nSlices):
+                    im[(lenZ*j+gap*j):(lenZ*(j+1)+gap*j),:] = copy.copy(np.flip(slicedMax[i,nChannel,j], axis=0))
 
-            # adjust contrast
-            contrastedIm = adjustContrast(im, adjMax, adjMin)
+                # adjust contrast
+                contrastedIm = adjustContrast(im, adjMax, adjMin)
 
-            # invert if rock channel
-            if channel.name == 'rocks':
-                contrastedIm = 255 - contrastedIm
+                # invert if rock channel
+                if channel.name == 'rocks':
+                    contrastedIm = 255 - contrastedIm
 
-            frame = cv2.applyColorMap(contrastedIm,cmapy.cmap('viridis'))
+                frame = cv2.applyColorMap(contrastedIm,cmapy.cmap('viridis'))
 
-            frame[np.where(im==0)] = [0,0,0]
+                frame[np.where(im==0)] = [0,0,0]
 
-            # add time stamp
-            t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
-            cv2.putText(frame,t,(25,150),cv2.FONT_HERSHEY_SIMPLEX,6,[255,255,255],10,cv2.LINE_AA)
+                # add time stamp
+                t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
+                cv2.putText(frame,t,(25,lenZ+gap),fontXY.font,fontXY.fontSize,[255,255,255],fontXY.lineThickness,cv2.LINE_AA)
 
-            # add scale bar
-            scaleBarXY._addScaleBar(frame)
+                # add scale bars
+                scaleBarXY._addScaleBar(frame, fontXY)
 
-            # write frame
-            vid.write(frame)
+                # write frame
+                vid.write(frame)
 
-        vid.release()
-        cv2.destroyAllWindows()
+            vid.release()
+            cv2.destroyAllWindows()
+        except:
+            vid.release()
+            cv2.destroyAllWindows()
 
 def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
 
@@ -357,8 +387,10 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
         length = scaleBarLength,
         textOffset = scaleBarLength//100, #50
     )
-    if scaleBarXY.length == 1000:
-        scaleBarXY.text = '1 mm'
+    if scaleBarXY.length >= 1000:
+        scaleBarXY.length = scaleBarXY.length/1000
+        scaleBarXY.units = 'mm'
+        scaleBarXY.text = str(scaleBarXY.length) + ' ' + scaleBarXY.units
     
     scaleBarXZ = scaleBar(
         posY = lenZ,
@@ -369,46 +401,56 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
         textOffset = 5, #50
     )
 
+    # define font
+    fontXY = font(cv2.FONT_HERSHEY_SIMPLEX)
+    fontXY.size, fontXY.lineThickness = fontXY._getFontSize(scaleBarXY)
+
+    fontXZ= font(cv2.FONT_HERSHEY_SIMPLEX)
+    fontXZ.size, fontXZ.lineThickness = fontXZ._getFontSize(scaleBarXZ)
+
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
-    for i in tqdm(range(lenT)):
-        
-        imCells = np.zeros([movieHeight,movieWidth])
-        imRocks = np.zeros([movieHeight,movieWidth])
+    try:
+        for i in tqdm(range(lenT)):
+            
+            imCells = np.zeros([movieHeight,movieWidth])
+            imRocks = np.zeros([movieHeight,movieWidth])
 
-        # copy max projections 
-        imCells[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannelCells],axis=0))
-        imCells[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannelCells,0])
-        imCells[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannelCells]))
+            # copy max projections 
+            imCells[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannelCells],axis=0))
+            imCells[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannelCells,0])
+            imCells[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannelCells]))
 
-        imRocks[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannelRocks],axis=0))
-        imRocks[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannelRocks,0])
-        imRocks[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannelRocks]))
-        
-        contrastedImCells = adjustContrast(imCells, scaleMaxCells, adjMinCells)
-        contrastedImRocks = adjustContrast(imRocks, scaleMaxRocks, adjMinRocks)
+            imRocks[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannelRocks],axis=0))
+            imRocks[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannelRocks,0])
+            imRocks[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannelRocks]))
+            
+            contrastedImCells = adjustContrast(imCells, scaleMaxCells, adjMinCells)
+            contrastedImRocks = adjustContrast(imRocks, scaleMaxRocks, adjMinRocks)
 
-        # invert rock channel
-        contrastedImRocks = 255 - contrastedImRocks
+            # invert rock channel
+            contrastedImRocks = 255 - contrastedImRocks
 
-        frame = cv2.merge((contrastedImCells,contrastedImRocks,contrastedImCells))
+            frame = cv2.merge((contrastedImCells,contrastedImRocks,contrastedImCells))
 
-        frame[np.where(contrastedImCells==0)] = [0,0,0]
-        
-        # time stamp
-        t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
-        #cv2.putText(frame,t,(25,lenZ+gap+150),cv2.FONT_HERSHEY_SIMPLEX,6,[255,255,255],10,cv2.LINE_AA)
-        cv2.putText(frame,t,(15,lenZ+gap+30),cv2.FONT_HERSHEY_SIMPLEX,1,[255,255,255],3,cv2.LINE_AA)
+            frame[np.where(contrastedImCells==0)] = [0,0,0]
+            
+            # time stamp
+            t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
+            cv2.putText(frame,t,(25,lenZ+gap),fontXY.font,fontXY.fontSize,[255,255,255],fontXY.lineThickness,cv2.LINE_AA)
 
-        # add scale bars
-        scaleBarXY._addScaleBar(frame)
-        scaleBarXZ._addScaleBarZ(frame)
+            # add scale bars
+            scaleBarXY._addScaleBar(frame, fontXY)
+            scaleBarXZ._addScaleBarZ(frame, fontXZ)
 
-        # write frame 
-        vid.write(frame)
+            # write frame 
+            vid.write(frame)
 
-    vid.release()
-    cv2.destroyAllWindows()
+        vid.release()
+        cv2.destroyAllWindows()
+    except:
+        vid.release()
+        cv2.destroyAllWindows()
 
 def generateZDepthColormap(lenZ, cmap):
     #generates a colormap based on z depth, red is the highest z depth, blue is the lowest
@@ -456,93 +498,115 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
         length = scaleBarLength,
         textOffset = scaleBarLength//100, #50
     )
-    if scaleBarXY.length == 1000:
-        scaleBarXY.text = '1 mm'
+    if scaleBarXY.length >= 1000:
+        scaleBarXY.length = scaleBarXY.length/1000
+        scaleBarXY.units = 'mm'
+        scaleBarXY.text = str(scaleBarXY.length) + ' ' + scaleBarXY.units
+
+    scaleBarXZ = scaleBar(
+        posY = lenZ,
+        posX = lenX + gap,
+        heightInPx = lenZ//10, #30
+        lengthInPx = lenZ,
+        length = int(lenZ*channel.voxelDims[2]),
+        textOffset = 5, #50
+    )
+
+    # define font
+    fontXY = font(cv2.FONT_HERSHEY_SIMPLEX)
+    fontXY.size, fontXY.lineThickness = fontXY._getFontSize(scaleBarXY)
+
+    fontXZ= font(cv2.FONT_HERSHEY_SIMPLEX)
+    fontXZ.size, fontXZ.lineThickness = fontXZ._getFontSize(scaleBarXZ)
 
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
-    for i in tqdm(range(lenT)):
+    try:
+        for i in tqdm(range(lenT)):
 
-        # generate a scaled image for the XY projection
-        imXY = copy.copy(maxZ[i,nChannel,0])
-        contrastedImXY = adjustContrast(imXY, adjMax, adjMin)
-        scaledImGrayscaleXY = invertAndScale(channel.name, contrastedImXY)
+            # generate a scaled image for the XY projection
+            imXY = copy.copy(maxZ[i,nChannel,0])
+            contrastedImXY = adjustContrast(imXY, adjMax, adjMin)
+            scaledImGrayscaleXY = invertAndScale(channel.name, contrastedImXY)
 
-        # apply z depth colormap based on z depths in slice
-        zDepths = maxZ[i,nChannel,1]
-        # TODO: make into functions for XY color assignment and XZ/YZ color assignment
-        imBluesXY = np.zeros([lenY, lenX]).astype(int)
-        imGreensXY = np.zeros([lenY, lenX]).astype(int)
-        imRedsXY = np.zeros([lenY, lenX]).astype(int)
-        for y in range(0,lenY):
-            for x in range(0,lenX):
-                zDepth = int(zDepths[y,x])
-                imBluesXY[y,x] = zDepthColormap[zDepth][0]
-                imGreensXY[y,x] = zDepthColormap[zDepth][1]
-                imRedsXY[y,x] = zDepthColormap[zDepth][2]
-        imBGRValsXY = cv2.merge([imBluesXY, imGreensXY, imRedsXY])
+            # apply z depth colormap based on z depths in slice
+            zDepths = maxZ[i,nChannel,1]
+            # TODO: make into functions for XY color assignment and XZ/YZ color assignment
+            imBluesXY = np.zeros([lenY, lenX]).astype(int)
+            imGreensXY = np.zeros([lenY, lenX]).astype(int)
+            imRedsXY = np.zeros([lenY, lenX]).astype(int)
+            for y in range(0,lenY):
+                for x in range(0,lenX):
+                    zDepth = int(zDepths[y,x])
+                    imBluesXY[y,x] = zDepthColormap[zDepth][0]
+                    imGreensXY[y,x] = zDepthColormap[zDepth][1]
+                    imRedsXY[y,x] = zDepthColormap[zDepth][2]
+            imBGRValsXY = cv2.merge([imBluesXY, imGreensXY, imRedsXY])
 
-        frameXY = np.multiply(scaledImGrayscaleXY,imBGRValsXY).astype('uint8')
+            frameXY = np.multiply(scaledImGrayscaleXY,imBGRValsXY).astype('uint8')
 
 
-        # generate a scaled image for the XZ projection
-        imXZ = copy.copy(maxY[i,nChannel])
-        contrastedImXZ = adjustContrast(imXZ, adjMax, adjMin)
-        scaledImGrayscaleXZ = invertAndScale(channel.name, contrastedImXZ)
+            # generate a scaled image for the XZ projection
+            imXZ = copy.copy(maxY[i,nChannel])
+            contrastedImXZ = adjustContrast(imXZ, adjMax, adjMin)
+            scaledImGrayscaleXZ = invertAndScale(channel.name, contrastedImXZ)
 
-        # apply z depth colormap based on z depths in slice
-        imBluesXZ = np.zeros([lenZ, lenX]).astype(int)
-        imGreensXZ = np.zeros([lenZ, lenX]).astype(int)
-        imRedsXZ = np.zeros([lenZ, lenX]).astype(int)
-        for z in range(0,lenZ):
-            for x in range(0,lenX):
-                zDepth = z
-                imBluesXZ[z,x] = zDepthColormap[zDepth][0]
-                imGreensXZ[z,x] = zDepthColormap[zDepth][1]
-                imRedsXZ[z,x] = zDepthColormap[zDepth][2]
-        imBGRValsXZ = cv2.merge([imBluesXZ, imGreensXZ, imRedsXZ])
-
-        frameXZ = np.multiply(scaledImGrayscaleXZ,imBGRValsXZ).astype('uint8')
-        frameXZ = np.flip(frameXZ, axis=0)
-
-        # generate a scaled image for the YZ projection
-        imYZ = copy.copy(np.transpose(maxX[i,nChannel]))
-        contrastedImYZ = adjustContrast(imYZ, adjMax, adjMin)
-        scaledImGrayscaleYZ = invertAndScale(channel.name, contrastedImYZ)
-
-        # apply z depth colormap based on z depths in slice
-        imBluesYZ = np.zeros([lenY, lenZ]).astype(int)
-        imGreensYZ = np.zeros([lenY, lenZ]).astype(int)
-        imRedsYZ = np.zeros([lenY, lenZ]).astype(int)
-        for y in range(0,lenY):
+            # apply z depth colormap based on z depths in slice
+            imBluesXZ = np.zeros([lenZ, lenX]).astype(int)
+            imGreensXZ = np.zeros([lenZ, lenX]).astype(int)
+            imRedsXZ = np.zeros([lenZ, lenX]).astype(int)
             for z in range(0,lenZ):
-                zDepth = z
-                imBluesYZ[y,z] = zDepthColormap[zDepth][0]
-                imGreensYZ[y,z] = zDepthColormap[zDepth][1]
-                imRedsYZ[y,z] = zDepthColormap[zDepth][2]
-        imBGRValsYZ = cv2.merge([imBluesYZ, imGreensYZ, imRedsYZ])
+                for x in range(0,lenX):
+                    zDepth = z
+                    imBluesXZ[z,x] = zDepthColormap[zDepth][0]
+                    imGreensXZ[z,x] = zDepthColormap[zDepth][1]
+                    imRedsXZ[z,x] = zDepthColormap[zDepth][2]
+            imBGRValsXZ = cv2.merge([imBluesXZ, imGreensXZ, imRedsXZ])
 
-        frameYZ = np.multiply(scaledImGrayscaleYZ,imBGRValsYZ).astype('uint8')
+            frameXZ = np.multiply(scaledImGrayscaleXZ,imBGRValsXZ).astype('uint8')
+            frameXZ = np.flip(frameXZ, axis=0)
 
-        # initialize frame 
-        frame = np.zeros([movieHeight,movieWidth,3]).astype('uint8')
+            # generate a scaled image for the YZ projection
+            imYZ = copy.copy(np.transpose(maxX[i,nChannel]))
+            contrastedImYZ = adjustContrast(imYZ, adjMax, adjMin)
+            scaledImGrayscaleYZ = invertAndScale(channel.name, contrastedImYZ)
 
-        frame[0:lenZ,0:lenX,:] = frameXZ
-        frame[(lenZ+gap):movieHeight,0:lenX,:] = frameXY
-        frame[(lenZ+gap):movieHeight,(lenX+gap):movieWidth,:] = frameYZ
+            # apply z depth colormap based on z depths in slice
+            imBluesYZ = np.zeros([lenY, lenZ]).astype(int)
+            imGreensYZ = np.zeros([lenY, lenZ]).astype(int)
+            imRedsYZ = np.zeros([lenY, lenZ]).astype(int)
+            for y in range(0,lenY):
+                for z in range(0,lenZ):
+                    zDepth = z
+                    imBluesYZ[y,z] = zDepthColormap[zDepth][0]
+                    imGreensYZ[y,z] = zDepthColormap[zDepth][1]
+                    imRedsYZ[y,z] = zDepthColormap[zDepth][2]
+            imBGRValsYZ = cv2.merge([imBluesYZ, imGreensYZ, imRedsYZ])
 
-        #frame[np.where(scaledIm==0)] = [0,0,0]
+            frameYZ = np.multiply(scaledImGrayscaleYZ,imBGRValsYZ).astype('uint8')
 
-        # time stamp
-        t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
-        #cv2.putText(frame,t,(25,lenZ+gap+150),cv2.FONT_HERSHEY_SIMPLEX,6,[255,255,255],10,cv2.LINE_AA)
-        cv2.putText(frame,t,(15,30),cv2.FONT_HERSHEY_SIMPLEX,1,[255,255,255],3,cv2.LINE_AA)
+            # initialize frame 
+            frame = np.zeros([movieHeight,movieWidth,3]).astype('uint8')
 
-        # add scale bars
-        scaleBarXY._addScaleBar(frame)
+            frame[0:lenZ,0:lenX,:] = frameXZ
+            frame[(lenZ+gap):movieHeight,0:lenX,:] = frameXY
+            frame[(lenZ+gap):movieHeight,(lenX+gap):movieWidth,:] = frameYZ
 
-        # write frame 
-        vid.write(frame)
+            #frame[np.where(scaledIm==0)] = [0,0,0]
 
-    vid.release()
-    cv2.destroyAllWindows()
+            # time stamp
+            t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
+            cv2.putText(frame,t,(25,lenZ+gap),fontXY.font,fontXY.fontSize,[255,255,255],fontXY.lineThickness,cv2.LINE_AA)
+
+            # add scale bars
+            scaleBarXY._addScaleBar(frame, fontXY)
+            scaleBarXZ._addScaleBarZ(frame, fontXZ)
+
+            # write frame 
+            vid.write(frame)
+
+        vid.release()
+        cv2.destroyAllWindows()
+    except:
+        vid.release()
+        cv2.destroyAllWindows()
