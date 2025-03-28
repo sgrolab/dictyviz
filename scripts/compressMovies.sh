@@ -1,58 +1,35 @@
-/bin/bash
+#/bin/bash
 
-#TODO: automate with list of all movies in movies directory
-#can also check for existence of output file and skip if it exists
+#Get a list of all .avi files in the current directory
+avi_files=$(ls *.avi)
 
-bsub \
-    -n 4 -W 00:30\
-    ffmpeg -i cells_orthomax.avi\
-    -c:v libx265 -pix_fmt yuv420p\
-    cells_orthomax_h265_crf28.mp4
+# Loop through each .avi file and compress it
+for avi_file in $avi_files; do
+    # Generate the output filename by replacing .avi with .mp4
+    output_file="${avi_file%.avi}.mp4"
 
-bsub \
-    -n 4 -W 00:30\
-    ffmpeg -i rocks_orthomax.avi\
-    -c:v libx265 -pix_fmt yuv420p\
-    rocks_orthomax_h265_crf28.mp4
+    # Check if the output file already exists
+    if [ -f "$output_file" ]; then
+        echo "Skipping $avi_file, output file $output_file already exists."
+        continue
+    fi
 
-bsub \
-    -n 4 -W 00:30\
-    ffmpeg -i comp_orthomax.avi\
-    -c:v libx265 -pix_fmt yuv420p\
-    comp_orthomax_h265_crf28.mp4
+    # Get the file size in bytes
+    file_size=$(stat -c%s "$avi_file")
 
-bsub \
-    -n 4 -W 00:30\
-    ffmpeg -i cells_X_sliced_orthomax.avi\
-    -c:v libx265 -pix_fmt yuv420p\
-    cells_X_sliced_orthomax_h265_crf28.mp4
+    # Determine the CRF value based on the file size
+    if [ "$file_size" -lt $((1 * 1024 * 1024 * 1024)) ]; then
+        crf=28
+    elif [ "$file_size" -lt $((2 * 1024 * 1024 * 1024)) ]; then
+        crf=32
+    else
+        crf=36
+    fi
 
-bsub \
-    -n 4 -W 00:30\
-    ffmpeg -i cells_Y_sliced_orthomax.avi\
-    -c:v libx265 -pix_fmt yuv420p\
-    cells_Y_sliced_orthomax_h265_crf28.mp4
-
-bsub \
-    -n 4 -W 00:30\
-    ffmpeg -i rocks_X_sliced_orthomax.avi\
-    -c:v libx265 -pix_fmt yuv420p\
-    cells_X_sliced_orthomax_h265_crf28.mp4
-
-bsub \
-    -n 4 -W 00:30\
-    ffmpeg -i rocks_Y_sliced_orthomax.avi\
-    -c:v libx265 -pix_fmt yuv420p\
-    cells_Y_sliced_orthomax_h265_crf28.mp4
-
-bsub \
-    -n 4 -W 00:30\
-    ffmpeg -i cells_zdepth_orthomax.avi\
-    -c:v libx265 -pix_fmt yuv420p -crf 36\
-    cells_zdepth_orthomax_h265_crf28.mp4
-
-bsub \
-    -n 4 -W 00:30\
-    ffmpeg -i rocks_zdepth_orthomax.avi\
-    -c:v libx265 -pix_fmt yuv420p -crf 36\
-    rocks_zdepth_orthomax_h265_crf28.mp4
+    # Submit the compression job
+    bsub \
+        -n 4 -W 00:30 \
+        ffmpeg -i "$avi_file" \
+        -c:v libx265 -pix_fmt yuv420p -crf "$crf" \
+        "$output_file"
+done
