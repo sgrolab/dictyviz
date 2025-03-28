@@ -151,13 +151,15 @@ class scaleBar:
     def _addScaleBar(self, frame, font):
         #TODO: getTextSize to calculate position of scale bar label
         frame[self.posY:self.posY+self.heightInPx, self.posX:self.posX+self.lengthInPx,:] = 255
-        cv2.putText(frame, self.text, (self.posX+self.textOffset, self.posY-10), #self.posY-30
-                    font.font, font.fontSize, [255,255,255], font.lineThickness, cv2.LINE_AA) #3, 6
+        (textWidth, _), _ = cv2.getTextSize(self.text, font.font, font.fontSize, font.lineThickness)
+        textPos = (self.posX + (self.lengthInPx//2) - (textWidth//2), self.posY - self.heightInPx//2)
+        cv2.putText(frame, self.text, textPos, font.font, font.fontSize, [255,255,255], font.lineThickness, cv2.LINE_AA)
 
     def _addScaleBarZ(self, frame, font):
         frame[self.posY:self.posY+self.heightInPx, self.posX:self.posX+self.lengthInPx,:] = 255
-        cv2.putText(frame, self.text, (self.posX, self.posY-10), #self.posY-50
-                    font.font, font.fontSize, [255,255,255], font.lineThickness, cv2.LINE_AA)
+        (textWidth, _), _ = cv2.getTextSize(self.text, font.font, font.fontSize, font.lineThickness)
+        textPos = (self.posX + (self.lengthInPx//2) - (textWidth//2), self.posY - self.heightInPx//2)
+        cv2.putText(frame, self.text, textPos, font.font, font.fontSize, [255,255,255], font.lineThickness, cv2.LINE_AA)
         
 def getScaleBarLength(root, voxelDims):
     #TODO: add scaling factor for sliced movies where the scale bar should be smaller
