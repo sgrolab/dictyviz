@@ -14,16 +14,10 @@ cwd = os.getcwd()
 Tk().withdraw() 
 zarrFile = filedialog.askdirectory(initialdir='cryolite', title='Select zarr file(s)')
 os.chdir(zarrFile)
-outputFile = zarrFile + '\\makeOrthoMaxProjMovies_out.txt'
+outputFile = zarrFile + '\\calcOrthoMaxProjs_out.txt'
 print(zarrFile)
 with open(outputFile, 'w') as f:
     print('Zarr file:', zarrFile, '\n', file=f)
-
-    voxelDims = dv.getVoxelDimsFromXML(zarrFile)
-
-    # define channels
-    cells_red = channel(name='cells_red', nChannel=0, voxelDims=voxelDims, scaleMax=400)
-    cells_green = channel(name='cells_green', nChannel=1, voxelDims=voxelDims, scaleMax=1200)
 
     # create root store and analysis group
     dv.createRootStore(zarrFile)
