@@ -1,0 +1,22 @@
+{
+"imagingParameters":{
+    "imagingFrequency": 10
+},
+"channels": [{
+            "name": "cells",
+            "channelNumber": 0,
+            "scaleMin": 0,
+            "scaleMax": 10000
+            },
+            {
+            "name": "rocks",
+            "channelNumber": 0,
+            "scaleMin": 0,
+            "scaleMax": 60000
+            }
+],
+"movieSpecs":{
+    "primaryColormap": "viridis",
+    "zDepthColormap": "gist_rainbow_r"
+}
+}
