@@ -1,7 +1,25 @@
 #/bin/bash
 
+# Prompt the user to select a folder using zenity
+selected_folder=$(zenity --file-selection --directory --title="Select a folder containing .avi files" --filename="$(pwd)/")
+
+# Check if the user canceled the dialog
+if [ -z "$selected_folder" ]; then
+    echo "No folder selected. Exiting."
+    exit 1
+fi
+
+# Change to the selected folder
+cd "$selected_folder" || { echo "Failed to change directory to $selected_folder. Exiting."; exit 1; }
+
 #Get a list of all .avi files in the current directory
-avi_files=$(ls *.avi)
+avi_files=$(ls *.avi 2>/dev/null)
+
+# Check if there are no .avi files in the folder
+if [ -z "$avi_files" ]; then
+    echo "No .avi files found in the selected folder. Exiting."
+    exit 1
+fi
 
 # Loop through each .avi file and compress it
 for avi_file in $avi_files; do
