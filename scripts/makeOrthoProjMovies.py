@@ -2,6 +2,7 @@ import sys
 import os
 import datetime
 import zarr
+import json
 from tkinter import Tk, filedialog
 
 # Add src directory to the Python path
@@ -23,22 +24,21 @@ def main(zarrFile=None):
     with open(outputFile, 'w') as f:
         print('Zarr file:', zarrFile, '\n', file=f)
 
-        # create root store and movies group
+        # create root store
         dv.createRootStore(zarrFile)
         root = zarr.open(zarrFile, mode='r+')
 
-        voxelDims = dv.getVoxelDimsFromXML(zarrFile+'/OME/METADATA.ome.xml')
-
         # define channels
-        channels = []
-        channels.append(channel(name='cells', nChannel=1, voxelDims=voxelDims, scaleMax=1800, adjMin=200))
-        channels.append(channel(name='rocks', nChannel=0, voxelDims=voxelDims, scaleMax=3000, adjMin=1500))
+        channels = dv.getChannelsFromJSON(zarrFile+'/parameters.json')
         for channel in channels:
-            print("Channel " + channel.name + ": Min = " + str(channel.adjMin) + ", Max = " + str(channel.scaleMax))
+            channel.voxelDims = dv.getVoxelDimsFromXML(zarrFile+'/OME/METADATA.ome.xml')
+            print("Channel " + channel.name + ": Min = " + str(channel.scaleMin) + ", Max = " + str(channel.scaleMax))
 
+        # create movies group
         dv.createZarrGroup(root, 'movies')
         os.chdir(zarrFile + '/movies')
 
+        # create ortho max videos
         for channel in channels:
             dv.makeOrthoMaxVideo(root, channel)
             dv.makeSlicedOrthoMaxVideos(root, channel)
