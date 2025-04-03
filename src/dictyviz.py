@@ -8,11 +8,10 @@ import xml.etree.ElementTree as et
 import zarr
 import cv2
 import cmapy
+import json
 import numpy as np
 from tqdm import tqdm
 
-# define global variables
-IMAGING_FREQ = 10
 
 def createRootStore(zarrFile):
     nestedStore = zarr.NestedDirectoryStore(zarrFile, dimension_separator='/')
@@ -26,6 +25,31 @@ def createZarrGroup(root, groupName):
         group = root.create_group(groupName)
     return group
 
+class channel:
+    def __init__(self, name, nChannel, voxelDims, scaleMax, scaleMin=0):
+        self.name = name
+        self.nChannel = nChannel
+        self.voxelDims = voxelDims
+        self.scaleMax = scaleMax
+        self.scaleMin = scaleMin
+
+def getChannelsFromJSON(jsonFile):
+    with open(jsonFile) as f:
+        channelSpecs = json.load(f)["channels"]
+    channels = []
+    for channelInfo in channelSpecs:
+        channels.append(channel(name=channelInfo["name"],
+                                nChannel=channelInfo["channelNumber"],
+                                voxelDims=None,
+                                scaleMax=channelInfo["scaleMax"],
+                                scaleMin=channelInfo["scaleMin"]))
+    return channels
+
+def getImagingFreqFromJSON(jsonFile):
+    with open(jsonFile) as f:
+        imagingFreq = json.load(f)["imagingParameters"]["imagingFrequency"]
+    return imagingFreq
+
 def getVoxelDimsFromXML(xmlFile, res_lvl=0):
     XMLTree = et.parse(xmlFile)
     XMLRoot = XMLTree.getroot()
@@ -34,14 +58,6 @@ def getVoxelDimsFromXML(xmlFile, res_lvl=0):
     pixelSizeY = float(imageMetaData.get('PhysicalSizeY'))
     pixelSizeZ = float(imageMetaData.get('PhysicalSizeZ'))
     return [pixelSizeX, pixelSizeY, pixelSizeZ]
-
-class channel:
-    def __init__(self, name, nChannel, voxelDims, scaleMax, adjMin=0):
-        self.name = name
-        self.nChannel = nChannel
-        self.voxelDims = voxelDims
-        self.scaleMax = scaleMax
-        self.adjMin = adjMin
 
 def calcMaxProjections(root, res_lvl=0):
 
@@ -83,25 +99,36 @@ def calcSlicedMaxProjections(root, res_lvl=0):
     slicedMaxProjectionsGroup = createZarrGroup(analysisGroup, 'sliced_max_projections')
 
     # set number of slices
-    sliceDepth = 83 # 83px*2.41um/px = 200 um
-    nSlicesX = math.ceil(lenX/sliceDepth)
-    nSlicesY = math.ceil(lenY/sliceDepth)
+    #sliceDepth = 83 # 83px*2.41um/px = 200 um
+    nSlices = 20
+    sliceDepthX = lenX//(nSlices-1)
+    sliceDepthY = lenY//(nSlices-1)
+    #nSlicesX = math.ceil(lenX/sliceDepth)
+    #nSlicesY = math.ceil(lenY/sliceDepth)
 
     # create zarr arrays for each max projection
-    slicedMaxX = slicedMaxProjectionsGroup.zeros('sliced_maxx',shape=(lenT,lenCh,nSlicesX,lenZ,lenY),chunks=(1,1,2,lenZ,lenY))
-    slicedMaxY = slicedMaxProjectionsGroup.zeros('sliced_maxy',shape=(lenT,lenCh,nSlicesY,lenZ,lenX),chunks=(1,1,2,lenZ,lenX))
+    slicedMaxX = slicedMaxProjectionsGroup.zeros('sliced_maxx',shape=(lenT,lenCh,nSlices,lenZ,lenY),chunks=(1,1,2,lenZ,lenY))
+    slicedMaxY = slicedMaxProjectionsGroup.zeros('sliced_maxy',shape=(lenT,lenCh,nSlices,lenZ,lenX),chunks=(1,1,2,lenZ,lenX))
 
     for i in tqdm(range(lenT)):
         for j in range(lenCh):
-            for k in range(nSlicesX):
-                rangeX = [k*sliceDepth, (k+1)*sliceDepth]
+            for k in range(nSlices-1):
+                rangeX = [k*sliceDepthX, (k+1)*sliceDepthX]
                 frame = resArray[i,j,:,:,rangeX[0]:rangeX[1]]
                 slicedMaxX[i,j,k] = np.max(frame,axis=2)
+            #fill last chunk with the rest of the data
+            rangeX = [(nSlices-1)*sliceDepthX, lenX]
+            frame = resArray[i,j,:,:,rangeX[0]:rangeX[1]]
+            slicedMaxX[i,j,nSlices-1] = np.max(frame,axis=2)
 
-            for k in range(nSlicesY):
-                rangeY = [k*sliceDepth, (k+1)*sliceDepth]
+            for k in range(nSlices-1):
+                rangeY = [k*sliceDepthY, (k+1)*sliceDepthY]
                 frame = resArray[i,j,:,rangeY[0]:rangeY[1],:]
                 slicedMaxY[i,j,k] = np.max(frame,axis=1)
+            #fill last chunk with the rest of the data
+            rangeY = [(nSlices-1)*sliceDepthY, lenY]
+            frame = resArray[i,j,:,rangeY[0]:rangeY[1],:]
+            slicedMaxY[i,j,nSlices-1] = np.max(frame,axis=1)
 
 def generateUniqueFilename(filename, ext):
     i = 1
@@ -129,11 +156,11 @@ def getProjectionDimensions(root):
     lenX = maxY.shape[-1]
     return lenT, lenZ, lenY, lenX
 
-def adjustContrast(im, adjMax, adjMin):
-    im = np.clip(im,adjMin,adjMax)
-    backSub = im - adjMin
+def adjustContrast(im, adjMax, scaleMin):
+    im = np.clip(im,scaleMin,adjMax)
+    backSub = im - scaleMin
     backSub[np.where(backSub<0)] = 0
-    scaledIm = np.divide(backSub,adjMax-adjMin)
+    scaledIm = np.divide(backSub,adjMax-scaleMin)
     contrastedIm = np.multiply(scaledIm,255).astype('uint8')
     return(contrastedIm)
 
@@ -196,7 +223,9 @@ def makeOrthoMaxVideo(root, channel, ext='.avi'):
     filename = generateUniqueFilename(channel.name + '_orthomax', ext)
     nChannel = channel.nChannel
     adjMax = channel.scaleMax
-    adjMin = channel.adjMin
+    scaleMin = channel.scaleMin
+
+    imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
 
     maxZ = root['analysis']['max_projections']['maxz']
     maxY = root['analysis']['max_projections']['maxy']
@@ -255,7 +284,7 @@ def makeOrthoMaxVideo(root, channel, ext='.avi'):
             im[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannel,0])
             im[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannel]))
             
-            contrastedIm = adjustContrast(im, adjMax, adjMin)
+            contrastedIm = adjustContrast(im, adjMax, scaleMin)
 
             # invert if rock channel
             if channel.name == 'rocks':
@@ -266,7 +295,7 @@ def makeOrthoMaxVideo(root, channel, ext='.avi'):
             frame[np.where(im==0)] = [0,0,0]
             
             # time stamp
-            t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
+            t = f'{i*imagingFreq // 60:02d}' + ':' + f'{i*imagingFreq % 60:02d}'
             timeStampPos = getTimeStampPos(upperLeftXY, t, fontXY)
             cv2.putText(frame,t,timeStampPos,fontXY.font,fontXY.fontSize,[255,255,255],fontXY.lineThickness,cv2.LINE_AA)
 
@@ -289,7 +318,9 @@ def makeSlicedOrthoMaxVideos(root, channel, ext='.avi'):
                  generateUniqueFilename(channel.name + '_Y_sliced_orthomax', ext)]
     nChannel = channel.nChannel
     adjMax = channel.scaleMax
-    adjMin = channel.adjMin
+    scaleMin = channel.scaleMin
+
+    imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
         
     slicedMaxes = [root['analysis']['sliced_max_projections']['sliced_maxx'], root['analysis']['sliced_max_projections']['sliced_maxy']]
 
@@ -337,7 +368,7 @@ def makeSlicedOrthoMaxVideos(root, channel, ext='.avi'):
                     im[(lenZ*j+gap*j):(lenZ*(j+1)+gap*j),:] = copy.copy(np.flip(slicedMax[i,nChannel,j], axis=0))
 
                 # adjust contrast
-                contrastedIm = adjustContrast(im, adjMax, adjMin)
+                contrastedIm = adjustContrast(im, adjMax, scaleMin)
 
                 # invert if rock channel
                 if channel.name == 'rocks':
@@ -348,7 +379,7 @@ def makeSlicedOrthoMaxVideos(root, channel, ext='.avi'):
                 frame[np.where(im==0)] = [0,0,0]
 
                 # add time stamp
-                t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
+                t = f'{i*imagingFreq // 60:02d}' + ':' + f'{i*imagingFreq % 60:02d}'
                 timeStampPos = getTimeStampPos((0,0), t, fontXY)
                 cv2.putText(frame,t,timeStampPos,fontXY.font,fontXY.fontSize,[255,255,255],fontXY.lineThickness,cv2.LINE_AA)
 
@@ -373,11 +404,13 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
         if channel.name == 'cells':
             nChannelCells = channel.nChannel
             scaleMaxCells = channel.scaleMax
-            adjMinCells = channel.adjMin
+            scaleMinCells = channel.scaleMin
         else:
             nChannelRocks = channel.nChannel
             scaleMaxRocks = channel.scaleMax
-            adjMinRocks = channel.adjMin
+            scaleMinRocks = channel.scaleMin
+
+    imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
 
     maxZ = root['analysis']['max_projections']['maxz']
     maxY = root['analysis']['max_projections']['maxy']
@@ -440,8 +473,8 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
             imRocks[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannelRocks,0])
             imRocks[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannelRocks]))
             
-            contrastedImCells = adjustContrast(imCells, scaleMaxCells, adjMinCells)
-            contrastedImRocks = adjustContrast(imRocks, scaleMaxRocks, adjMinRocks)
+            contrastedImCells = adjustContrast(imCells, scaleMaxCells, scaleMinCells)
+            contrastedImRocks = adjustContrast(imRocks, scaleMaxRocks, scaleMinRocks)
 
             # invert rock channel
             contrastedImRocks = 255 - contrastedImRocks
@@ -451,7 +484,7 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
             frame[np.where(contrastedImCells==0)] = [0,0,0]
             
             # time stamp
-            t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
+            t = f'{i*imagingFreq // 60:02d}' + ':' + f'{i*imagingFreq % 60:02d}'
             timeStampPos = getTimeStampPos(upperLeftXY, t, fontXY)
             cv2.putText(frame,t,timeStampPos,fontXY.font,fontXY.fontSize,[255,255,255],fontXY.lineThickness,cv2.LINE_AA)
 
@@ -489,7 +522,9 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
     filename = generateUniqueFilename(channel.name + '_zdepth_orthomax', ext)
     nChannel = channel.nChannel
     adjMax = channel.scaleMax
-    adjMin = channel.adjMin
+    scaleMin = channel.scaleMin
+
+    imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
 
     maxZ = root['analysis']['max_projections']['maxz']
     maxY = root['analysis']['max_projections']['maxy']
@@ -544,7 +579,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
             # generate a scaled image for the XY projection
             imXY = copy.copy(maxZ[i,nChannel,0])
-            contrastedImXY = adjustContrast(imXY, adjMax, adjMin)
+            contrastedImXY = adjustContrast(imXY, adjMax, scaleMin)
             scaledImGrayscaleXY = invertAndScale(channel.name, contrastedImXY)
 
             # apply z depth colormap based on z depths in slice
@@ -566,7 +601,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
             # generate a scaled image for the XZ projection
             imXZ = copy.copy(maxY[i,nChannel])
-            contrastedImXZ = adjustContrast(imXZ, adjMax, adjMin)
+            contrastedImXZ = adjustContrast(imXZ, adjMax, scaleMin)
             scaledImGrayscaleXZ = invertAndScale(channel.name, contrastedImXZ)
 
             # apply z depth colormap based on z depths in slice
@@ -586,7 +621,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
             # generate a scaled image for the YZ projection
             imYZ = copy.copy(np.transpose(maxX[i,nChannel]))
-            contrastedImYZ = adjustContrast(imYZ, adjMax, adjMin)
+            contrastedImYZ = adjustContrast(imYZ, adjMax, scaleMin)
             scaledImGrayscaleYZ = invertAndScale(channel.name, contrastedImYZ)
 
             # apply z depth colormap based on z depths in slice
@@ -613,7 +648,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
             #frame[np.where(scaledIm==0)] = [0,0,0]
 
             # time stamp
-            t = f'{i*IMAGING_FREQ // 60:02d}' + ':' + f'{i*IMAGING_FREQ % 60:02d}'
+            t = f'{i*imagingFreq // 60:02d}' + ':' + f'{i*imagingFreq % 60:02d}'
             timeStampPos = getTimeStampPos(upperLeftXY, t, fontXY)
             cv2.putText(frame,t,timeStampPos,fontXY.font,fontXY.fontSize,[255,255,255],fontXY.lineThickness,cv2.LINE_AA)
 
