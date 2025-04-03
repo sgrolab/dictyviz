@@ -3,8 +3,14 @@ import os
 import datetime
 import zarr
 from tkinter import Tk, filedialog
-import src.dictyviz as dv
-from src.dictyviz import channel
+
+# Add src directory to the Python path
+script_dir = os.path.dirname(os.path.abspath(__file__))
+src_path = os.path.join(script_dir, '..', 'src')
+sys.path.append(src_path)
+
+import dictyviz as dv
+from dictyviz import channel
 
 sys.path.insert(0,'Y:\\jennifer')
 cwd = os.getcwd()
