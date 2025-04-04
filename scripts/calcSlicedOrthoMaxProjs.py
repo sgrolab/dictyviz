@@ -12,7 +12,7 @@ sys.path.append(src_path)
 import dictyviz as dv
 from dictyviz import channel
 
-sys.path.insert(0,'Y:\\jennifer')
+sys.path.insert(0,'Y\\jennifer')
 cwd = os.getcwd()
 #zarrFile = cwd + "/" + sys.argv[1]
 
@@ -20,7 +20,7 @@ cwd = os.getcwd()
 Tk().withdraw() 
 zarrFile = filedialog.askdirectory(initialdir='cryolite', title='Select zarr file(s)')
 os.chdir(zarrFile)
-outputFile = zarrFile + '/calcOrthoMaxProjs_out.txt'
+outputFile = zarrFile + '/calcSlicedOrthoMaxProjs_out.txt'
 print(zarrFile)
 with open(outputFile, 'w') as f:
     print('Zarr file:', zarrFile, '\n', file=f)
@@ -32,5 +32,5 @@ with open(outputFile, 'w') as f:
     print('Root store created at ', datetime.datetime.now(), file=f)
 
     # calculate max projections
-    dv.calcMaxProjections(root, res_lvl=0)
-    print('Max projections calculated at ', datetime.datetime.now(), file=f)
+    dv.calcSlicedMaxProjections(root, res_lvl=0)
+    print('Sliced max projections calculated at ', datetime.datetime.now(), file=f)
