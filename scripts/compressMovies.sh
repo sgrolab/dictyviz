@@ -48,6 +48,6 @@ for avi_file in $avi_files; do
     bsub \
         -n 4 -W 00:30 \
         ffmpeg -i "$avi_file" \
-        -c:v libx265 -pix_fmt yuv420p -crf "$crf" \
+        -c:v libx264 -pix_fmt yuv420p -crf "$crf" \
         "$output_file"
 done
