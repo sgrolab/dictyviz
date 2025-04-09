@@ -3,6 +3,7 @@ import os
 import datetime
 import zarr
 from tkinter import Tk, filedialog
+from dask.distributed import Client, wait
 
 # Add src directory to the Python path
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -40,13 +41,38 @@ def main(zarrFile=None):
         dv.createZarrGroup(root, 'movies')
         os.chdir(zarrFile + '/movies')
 
-        # create ortho max videos
-        for channel in channels:
-            dv.makeOrthoMaxVideo(root, channel)
-            dv.makeSlicedOrthoMaxVideos(root, channel)
-            dv.makeZDepthOrthoMaxVideo(root, channel, 'gist_rainbow_r')
-        dv.makeCompOrthoMaxVideo(root, channels)
-        print('Ortho max videos created at ', datetime.datetime.now()) 
+        # create dask client
+        try:
+            client = Client(threads_per_worker=8, n_workers=1)
+            print('Dask client created at ', datetime.datetime.now())
+        except:
+            print('Dask client could not be created')
+            sys.exit() 
+
+        # # create ortho max videos
+        # for channel in channels:
+        #     dv.makeOrthoMaxVideo(root, channel)
+        #     dv.makeSlicedOrthoMaxVideos(root, channel)
+        #     dv.makeZDepthOrthoMaxVideo(root, channel, 'gist_rainbow_r')
+        # dv.makeCompOrthoMaxVideo(root, channels)
+        # print('Ortho max videos created at ', datetime.datetime.now()) 
+
+        # submit movie tasks
+        try:
+            wait([client.submit(dv.makeOrthoMaxVideo, root, channel[0]),
+                client.submit(dv.makeOrthoMaxVideo, root, channel[1]),
+                client.submit(dv.makeCompOrthoMaxVideo, root, channels),
+                client.submit(dv.makeSlicedOrthoMaxVideos, root, channel[0]),
+                client.submit(dv.makeSlicedOrthoMaxVideos, root, channel[1]),
+                client.submit(dv.makeZDepthOrthoMaxVideo, root, channel[0], 'gist_rainbow_r'),
+                client.submit(dv.makeZDepthOrthoMaxVideo, root, channel[1], 'gist_rainbow_r'),])
+            print('Ortho max videos created at ', datetime.datetime.now())   
+        except:
+            print('Dask tasks could not be submitted')
+            client.shutdown()
+            sys.exit()
+
+        client.shutdown()
 
 if __name__ == '__main__':
     if len(sys.argv) > 1:
