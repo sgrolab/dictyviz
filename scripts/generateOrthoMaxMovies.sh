@@ -10,10 +10,10 @@ if [ -z "$selected_folder" ]; then
 fi
 
 # submit max projection calculation jobs, waiting for sliced max projs to finish
-bsub -n 8 -W 24:00 python calcOrthoMaxProjs.py ${selected_folder}
-bsub -n 8 -W 24:00 -K python calcSlicedOrthoMaxProjs.py ${selected_folder}
+bsub -n 8 -W 24:00 python calcOrthoMaxProjs.py "${selected_folder}"
+bsub -n 8 -W 24:00 -K python calcSlicedOrthoMaxProjs.py "${selected_folder}"
 
 # submit movie making jobs, waiting for max projs to finish
-bsub -n 8 -W 12:00 -K python makeOrthoProjMovies.py ${selected_folder}
+bsub -n 8 -W 12:00 -K python makeOrthoProjMovies.py "${selected_folder}"
 
-bsub -n 8 -W 01:00 ./compressMovies.sh ${selected_folder}
+./compressMovies.sh "${selected_folder}"
