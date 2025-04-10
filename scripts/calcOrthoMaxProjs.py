@@ -33,6 +33,11 @@ def main(zarrFile=None):
         dv.createZarrGroup(root, 'analysis')
         print('Root store created at ', datetime.datetime.now(), file=f)
 
+        # check if projections have already been calculated
+        if root['analysis']['max_projections']['maxx']:
+            print('Max projections already calculated, skipping calculation.', file=f)
+            return
+
         # calculate max projections
         dv.calcMaxProjections(root, res_lvl=0)
         print('Max projections calculated at ', datetime.datetime.now(), file=f)

@@ -33,6 +33,11 @@ def main(zarrFile=None):
         dv.createZarrGroup(root, 'analysis')
         print('Root store created at ', datetime.datetime.now(), file=f)
 
+        # check if sliced projections have already been calculated
+        if root['analysis']['sliced_max_projections']['sliced_maxx']:
+            print('Sliced max projections already calculated, skipping calculation.', file=f)
+            return
+
         # calculate max projections
         dv.calcSlicedMaxProjections(root, res_lvl=0)
         print('Sliced max projections calculated at ', datetime.datetime.now(), file=f)
