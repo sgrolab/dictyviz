@@ -1,17 +1,19 @@
 name: dictyviz
 channels:
+- ome
 - conda-forge
 dependencies:
-- napari-ome-zarr=0.6.1
-- crc32c=2.7.1
-- jupyterlab=4.3.5
 - dask=2025.2.0
 - donfig=0.8.1.post1
+- bioformats2raw=0.9.4
+- crc32c=2.7.1
+- jupyterlab=4.3.5
+- napari-ome-zarr=0.6.1
 - pyqt=5.15.9
 - pip==25.0.1
 - pip:
-  - cmapy==0.6.6
-  - fonttools==4.56.0
   - opencv-python==4.11.0.86
+  - cmapy==0.6.6
   - opencv-contrib-python==4.11.0.86
+  - fonttools==4.56.0
   - pyparsing==3.2.1
