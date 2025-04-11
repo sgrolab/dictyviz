@@ -34,7 +34,7 @@ def main(zarrFile=None):
         print('Root store created at ', datetime.datetime.now(), file=f)
 
         # check if projections have already been calculated
-        if root['analysis']['max_projections']['maxx']:
+        if 'max_projections' in root['analysis']:
             print('Max projections already calculated, skipping calculation.', file=f)
             return
 
