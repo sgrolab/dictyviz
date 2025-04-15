@@ -62,7 +62,7 @@ for avi_file in $avi_files; do
 
     # Submit the compression job
     bsub \
-        -n 4 -W 00:30 \
+        -n 4 -W 00:30 -o /dev/null \
         ffmpeg -i "$avi_file" \
         -c:v libx264 -pix_fmt yuv420p -crf "$crf" \
         "$output_file"
