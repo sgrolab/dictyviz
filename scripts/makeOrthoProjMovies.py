@@ -37,11 +37,14 @@ def main(zarrFile=None):
             channel.voxelDims = dv.getVoxelDimsFromXML(zarrFile+'/OME/METADATA.ome.xml')
             print("Channel " + channel.name + ": Min = " + str(channel.scaleMin) + ", Max = " + str(channel.scaleMax))
 
-        # create movies group
-        dv.createZarrGroup(root, 'movies')
-        os.chdir(zarrFile + '/movies')
+        # create movies directory in the parent folder of the zarr file
+        parent_dir = os.path.dirname(zarrFile)
+        movies_dir = os.path.join(parent_dir, 'movies')
+        if not os.path.exists(movies_dir):
+            os.makedirs(movies_dir)
+        os.chdir(movies_dir)
 
-        # create dask client
+        # # create dask client
         try:
             client = Client(threads_per_worker=8, n_workers=1)
             print('Dask client created at ', datetime.datetime.now())
@@ -49,7 +52,7 @@ def main(zarrFile=None):
             print('Dask client could not be created')
             sys.exit() 
 
-        # # create ortho max videos
+        # create ortho max videos
         # for channel in channels:
         #     dv.makeOrthoMaxVideo(root, channel)
         #     dv.makeSlicedOrthoMaxVideos(root, channel)
@@ -57,15 +60,15 @@ def main(zarrFile=None):
         # dv.makeCompOrthoMaxVideo(root, channels)
         # print('Ortho max videos created at ', datetime.datetime.now()) 
 
-        # submit movie tasks
+        #submit movie tasks
         try:
-            wait([client.submit(dv.makeOrthoMaxVideo, root, channel[0]),
-                client.submit(dv.makeOrthoMaxVideo, root, channel[1]),
+            wait([client.submit(dv.makeOrthoMaxVideo, root, channels[0]),
+                client.submit(dv.makeOrthoMaxVideo, root, channels[1]),
                 client.submit(dv.makeCompOrthoMaxVideo, root, channels),
-                client.submit(dv.makeSlicedOrthoMaxVideos, root, channel[0]),
-                client.submit(dv.makeSlicedOrthoMaxVideos, root, channel[1]),
-                client.submit(dv.makeZDepthOrthoMaxVideo, root, channel[0], 'gist_rainbow_r'),
-                client.submit(dv.makeZDepthOrthoMaxVideo, root, channel[1], 'gist_rainbow_r'),])
+                client.submit(dv.makeSlicedOrthoMaxVideos, root, channels[0]),
+                client.submit(dv.makeSlicedOrthoMaxVideos, root, channels[1]),
+                client.submit(dv.makeZDepthOrthoMaxVideo, root, channels[0], 'gist_rainbow_r'),
+                client.submit(dv.makeZDepthOrthoMaxVideo, root, channels[1], 'gist_rainbow_r'),])
             print('Ortho max videos created at ', datetime.datetime.now())   
         except:
             print('Dask tasks could not be submitted')

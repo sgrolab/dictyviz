@@ -19,10 +19,10 @@ else
     fi
 fi
 
-# Change to the movies directory inside the selected folder
-movies_dir="$selected_folder/movies"
+# Change to the movies directory outside of the selected folder
+movies_dir="$selected_folder/../movies"
 if [ ! -d "$movies_dir" ]; then
-    echo "Error: The 'movies' directory does not exist in the selected folder."
+    echo "Error: There is no movies directory associated with the selected folder."
     exit 1
 fi
 
