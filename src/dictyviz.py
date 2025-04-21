@@ -18,7 +18,6 @@ def createRootStore(zarrFile):
     root = zarr.group(store=nestedStore, overwrite=False)
 
 def createZarrGroup(root, groupName):
-
     if groupName in root:
         group = root[groupName]
     else:
@@ -59,15 +58,16 @@ def getVoxelDimsFromXML(xmlFile, res_lvl=0):
     pixelSizeZ = float(imageMetaData.get('PhysicalSizeZ'))
     return [pixelSizeX, pixelSizeY, pixelSizeZ]
 
-def calcMaxProjections(root, res_lvl=0):
+
+def calcMaxProjections(root, analysisRoot, res_lvl=0):
 
     # define resolution level
     resArray = root['0'][str(res_lvl)]
 
     # get dataset dimensions
     lenT, lenCh, lenZ, lenY, lenX = resArray.shape
-    
-    analysisGroup = root['analysis']
+
+    analysisGroup = analysisRoot['analysis']
 
     # create max projections group
     maxProjectionsGroup = createZarrGroup(analysisGroup, 'max_projections')
@@ -83,17 +83,17 @@ def calcMaxProjections(root, res_lvl=0):
             frame = resArray[i, j, :, :, :]
             maxZ[i,j] = [np.max(frame,axis=0), np.argmax(frame,axis=0)]
             maxX[i,j] = np.max(frame,axis=2)
-            maxY[i,j] = np.max(frame,axis=1)
+            maxY[i,j] = np.max(frame,axis=1)          
 
 
-def calcSlicedMaxProjections(root, res_lvl=0):
+def calcSlicedMaxProjections(root, analysisRoot, res_lvl=0):
     # define resolution level
     resArray = root['0'][str(res_lvl)]
 
     # get dataset dimensions
     lenT, lenCh, lenZ, lenY, lenX = resArray.shape
 
-    analysisGroup = root['analysis']
+    analysisGroup = analysisRoot['analysis']
 
     # create max projections group
     slicedMaxProjectionsGroup = createZarrGroup(analysisGroup, 'sliced_max_projections')
