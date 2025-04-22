@@ -1,7 +1,6 @@
 # Dicty data functions for ome-zarr datasets
 
 import copy
-import math
 import os
 
 import xml.etree.ElementTree as et
@@ -9,6 +8,7 @@ import zarr
 import cv2
 import cmapy
 import json
+from PIL import ImageFont, ImageDraw, Image
 import numpy as np
 from tqdm import tqdm
 
@@ -164,35 +164,51 @@ def adjustContrast(im, adjMax, scaleMin):
     contrastedIm = np.multiply(scaledIm,255).astype('uint8')
     return(contrastedIm)
 
+
 class scaleBar:
-    def __init__(self, posY, posX, heightInPx, lengthInPx, length, textOffset):
+    def __init__(self, posY, posX, length, pxPerMicron, font):
         self.posY = posY
         self.posX = posX
-        self.heightInPx = heightInPx
-        self.lengthInPx = lengthInPx
         self.length = length
-        self.units = 'um'
-        self.text = str(length) + ' ' + self.units
-        self.textOffset = textOffset
+        self.pxPerMicron = pxPerMicron
+        self.font = font
+        self.lengthInPx = round(length*pxPerMicron)
+        self.heightInPx = int((length*pxPerMicron)//10)
+        self.units = '\u03BCm'
+        self.text = str(self.length) + self.units
 
-    def _addScaleBar(self, frame, font):
-        #TODO: getTextSize to calculate position of scale bar label
-        frame[self.posY:self.posY+self.heightInPx, self.posX:self.posX+self.lengthInPx,:] = 255
-        (textWidth, _), _ = cv2.getTextSize(self.text, font.font, font.fontSize, font.lineThickness)
-        textPos = (self.posX + (self.lengthInPx//2) - (textWidth//2), self.posY - self.heightInPx//2)
-        cv2.putText(frame, self.text, textPos, font.font, font.fontSize, [255,255,255], font.lineThickness, cv2.LINE_AA)
+    def _setFont(self):
+        #TODO: add a style sheet and get font from there
+        moduleDir = os.path.dirname(os.path.abspath(__file__))
+        fontPath = os.path.join(moduleDir, '..', 'fonts', 'Lato2OFL', 'Lato-Black.ttf')
+        fontSize = 1
+        self.font = ImageFont.truetype(fontPath, fontSize)
+        while self.font.getlength(self.text) <= self.lengthInPx/2:
+            fontSize += 1
+            self.font = ImageFont.truetype(fontPath, fontSize)
+        return
 
-    def _addScaleBarZ(self, frame, font):
-        frame[self.posY:self.posY+self.heightInPx, self.posX:self.posX+self.lengthInPx,:] = 255
-        (textWidth, _), _ = cv2.getTextSize(self.text, font.font, font.fontSize, font.lineThickness)
-        textPos = (self.posX + (self.lengthInPx//2) - (textWidth//2), self.posY - self.heightInPx//2)
-        cv2.putText(frame, self.text, textPos, font.font, font.fontSize, [255,255,255], font.lineThickness, cv2.LINE_AA)
-        
+    def _addScaleBar(self, frame):
+        # add bar
+        frame[self.posY-self.heightInPx:self.posY, self.posX-self.lengthInPx:self.posX,:] = 255
+        # convert length to mm if larger than 1000
+        if self.length >= 1000:
+            self.text = str(int(self.length/1000)) + 'mm'
+        # add text
+        img_pil = Image.fromarray(frame)
+        draw = ImageDraw.Draw(img_pil)
+        textWidth = draw.textlength(self.text, font=self.font)
+        textHeight, _ = self.font.getmetrics()
+        textPos = (self.posX-(self.lengthInPx//2)-(textWidth//2), self.posY-round(self.heightInPx*1.3)-textHeight)
+        draw.text(textPos, self.text, font=self.font, fill=(255, 255, 255))
+        frame = np.array(img_pil)
+        return frame
+      
 def getScaleBarLength(root, voxelDims):
     #TODO: add scaling factor for sliced movies where the scale bar should be smaller
     #approxScaleBarLength = projDimsUM[1]/scaleFactor
     #alternatively, for sliced movies, projDims should be switched out with movieDims
-    scaleBarLengths = [10, 50, 100, 500, 1000, 5000, 10000, 50000] # in um
+    scaleBarLengths = [10, 50, 100, 500, 1000, 2000, 5000, 10000, 50000] # in um
 
     projDimsPx = getProjectionDimensions(root)
     projDimsUm = [projDimsPx[3]*voxelDims[0], projDimsPx[2]*voxelDims[1], projDimsPx[1]*voxelDims[2]]
@@ -200,23 +216,14 @@ def getScaleBarLength(root, voxelDims):
     scaleBarLength = min(scaleBarLengths, key=lambda x:abs(x-approxScaleBarLength))
     return scaleBarLength
 
-class font:
-    def __init__(self, font, fontSize=0):
-        self.font = font
-        self.fontSize = fontSize
-        self.lineThickness = fontSize*2
+def addTimeStamp(frame, timeStampPos, t, font):
+    # time stamp
+    img_pil = Image.fromarray(frame)
+    draw = ImageDraw.Draw(img_pil)
+    draw.text(timeStampPos, t, font=font, fill=(255, 255, 255))
+    frame = np.array(img_pil)
+    return frame
 
-    def _getFontSize(self, scaleBar):
-        (textWidth, _), _ = cv2.getTextSize(scaleBar.text, self.font, self.fontSize, self.lineThickness)
-        while textWidth <= scaleBar.lengthInPx/2:
-            self.fontSize += .1
-            (textWidth, _), _ = cv2.getTextSize(scaleBar.text, self.font, self.fontSize, self.lineThickness)
-        self.lineThickness = round(self.fontSize*2)
-        return self.fontSize, self.lineThickness
-
-def getTimeStampPos(upperLeft, t, font):
-    (_, timeStampHeight), _ = cv2.getTextSize(t, font.font, font.size, font.lineThickness)
-    return (upperLeft[0], upperLeft[1] + timeStampHeight)
 
 def makeOrthoMaxVideo(root, channel, ext='.avi'):
 
@@ -237,39 +244,25 @@ def makeOrthoMaxVideo(root, channel, ext='.avi'):
 
     movieWidth = lenX + lenZ + gap
     movieHeight = lenY + lenZ + gap
-    upperLeftXY = (0, lenZ+gap)
 
     # define scale bars
     scaleBarLength = getScaleBarLength(root, channel.voxelDims)
-    scaleBarLengthInPx = int(scaleBarLength//channel.voxelDims[0])
     scaleBarXY = scaleBar(
-        posY = movieHeight - (scaleBarLengthInPx//10), #76
-        posX = lenX - scaleBarLengthInPx, #468
-        heightInPx = scaleBarLengthInPx//10, #30
-        lengthInPx = scaleBarLengthInPx, #416
+        posY = movieHeight,
+        posX = lenX,
         length = scaleBarLength,
-        textOffset = scaleBarLength//100, #50
+        pxPerMicron = 1/channel.voxelDims[0],
+        font = None,
     )
-    if scaleBarXY.length >= 1000:
-        scaleBarXY.length = scaleBarXY.length/1000
-        scaleBarXY.units = 'mm'
-        scaleBarXY.text = str(scaleBarXY.length) + ' ' + scaleBarXY.units
-    
+    scaleBarXY._setFont()
     scaleBarXZ = scaleBar(
         posY = lenZ,
-        posX = lenX + gap,
-        heightInPx = lenZ//10, #30
-        lengthInPx = lenZ,
+        posX = lenX + gap + lenZ,
         length = int(lenZ*channel.voxelDims[2]),
-        textOffset = 5, #50
+        pxPerMicron = 1/channel.voxelDims[2],
+        font = None,
     )
-
-    # define font
-    fontXY = font(cv2.FONT_HERSHEY_SIMPLEX)
-    fontXY.size, fontXY.lineThickness = fontXY._getFontSize(scaleBarXY)
-
-    fontXZ= font(cv2.FONT_HERSHEY_SIMPLEX)
-    fontXZ.size, fontXZ.lineThickness = fontXZ._getFontSize(scaleBarXZ)
+    scaleBarXZ._setFont()
     
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
@@ -293,15 +286,15 @@ def makeOrthoMaxVideo(root, channel, ext='.avi'):
             frame = cv2.applyColorMap(contrastedIm,cmapy.cmap('viridis'))
 
             frame[np.where(im==0)] = [0,0,0]
-            
-            # time stamp
-            t = f'{i*imagingFreq // 60:02d}' + ':' + f'{i*imagingFreq % 60:02d}'
-            timeStampPos = getTimeStampPos(upperLeftXY, t, fontXY)
-            cv2.putText(frame,t,timeStampPos,fontXY.font,fontXY.fontSize,[255,255,255],fontXY.lineThickness,cv2.LINE_AA)
 
             # add scale bars
-            scaleBarXY._addScaleBar(frame, fontXY)
-            scaleBarXZ._addScaleBarZ(frame, fontXZ)
+            frame = scaleBarXY._addScaleBar(frame)
+            frame = scaleBarXZ._addScaleBar(frame)
+
+            # time stamp
+            t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
+            timeStampPos = (0, lenZ+gap)
+            frame = addTimeStamp(frame, timeStampPos, t, scaleBarXY.font)
 
             # write frame 
             vid.write(frame)
@@ -335,25 +328,16 @@ def makeSlicedOrthoMaxVideos(root, channel, ext='.avi'):
         movieWidth = slicedMax.shape[-1]
         movieHeight = (lenZ * nSlices) + (gap * (nSlices-1))
 
-        # define scale bar
+        # define scale bars
         scaleBarLength = getScaleBarLength(root, channel.voxelDims)
-        scaleBarLengthInPx = int(scaleBarLength//channel.voxelDims[0])
         scaleBarXY = scaleBar(
-            posY = movieHeight - (scaleBarLengthInPx//10), #76
-            posX = movieWidth - scaleBarLengthInPx, #468
-            heightInPx = scaleBarLengthInPx//10, #30
-            lengthInPx = scaleBarLengthInPx, #416
+            posY = movieHeight,
+            posX = movieWidth,
             length = scaleBarLength,
-            textOffset = scaleBarLength//100, #50
+            pxPerMicron = 1/channel.voxelDims[0],
+            font = None,
         )
-        if scaleBarXY.length >= 1000:
-            scaleBarXY.length = scaleBarXY.length/1000
-            scaleBarXY.units = 'mm'
-            scaleBarXY.text = str(scaleBarXY.length) + ' ' + scaleBarXY.units
-
-        # define font
-        fontXY = font(cv2.FONT_HERSHEY_SIMPLEX)
-        fontXY.size, fontXY.lineThickness = fontXY._getFontSize(scaleBarXY)
+        scaleBarXY._setFont()
 
         vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
@@ -378,13 +362,13 @@ def makeSlicedOrthoMaxVideos(root, channel, ext='.avi'):
 
                 frame[np.where(im==0)] = [0,0,0]
 
-                # add time stamp
-                t = f'{i*imagingFreq // 60:02d}' + ':' + f'{i*imagingFreq % 60:02d}'
-                timeStampPos = getTimeStampPos((0,0), t, fontXY)
-                cv2.putText(frame,t,timeStampPos,fontXY.font,fontXY.fontSize,[255,255,255],fontXY.lineThickness,cv2.LINE_AA)
+                # add scale bar
+                frame = scaleBarXY._addScaleBar(frame)
 
-                # add scale bars
-                scaleBarXY._addScaleBar(frame, fontXY)
+                # time stamp
+                t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
+                timeStampPos = (0, 0)
+                frame = addTimeStamp(frame, timeStampPos, t, scaleBarXY.font)
 
                 # write frame
                 vid.write(frame)
@@ -422,39 +406,25 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
 
     movieWidth = lenX + lenZ + gap
     movieHeight = lenY + lenZ + gap
-    upperLeftXY = (0, lenZ+gap)
 
     # define scale bars
     scaleBarLength = getScaleBarLength(root, channel.voxelDims)
-    scaleBarLengthInPx = int(scaleBarLength//channel.voxelDims[0])
     scaleBarXY = scaleBar(
-        posY = movieHeight - (scaleBarLengthInPx//10), #76
-        posX = lenX - scaleBarLengthInPx, #468
-        heightInPx = scaleBarLengthInPx//10, #30
-        lengthInPx = scaleBarLengthInPx, #416
+        posY = movieHeight,
+        posX = lenX,
         length = scaleBarLength,
-        textOffset = scaleBarLength//100, #50
+        pxPerMicron = 1/channel.voxelDims[0],
+        font = None,
     )
-    if scaleBarXY.length >= 1000:
-        scaleBarXY.length = scaleBarXY.length/1000
-        scaleBarXY.units = 'mm'
-        scaleBarXY.text = str(scaleBarXY.length) + ' ' + scaleBarXY.units
-    
+    scaleBarXY._setFont()
     scaleBarXZ = scaleBar(
         posY = lenZ,
-        posX = lenX + gap,
-        heightInPx = lenZ//10, #30
-        lengthInPx = lenZ,
+        posX = lenX + gap + lenZ,
         length = int(lenZ*channel.voxelDims[2]),
-        textOffset = 5, #50
+        pxPerMicron = 1/channel.voxelDims[2],
+        font = None,
     )
-
-    # define font
-    fontXY = font(cv2.FONT_HERSHEY_SIMPLEX)
-    fontXY.size, fontXY.lineThickness = fontXY._getFontSize(scaleBarXY)
-
-    fontXZ= font(cv2.FONT_HERSHEY_SIMPLEX)
-    fontXZ.size, fontXZ.lineThickness = fontXZ._getFontSize(scaleBarXZ)
+    scaleBarXZ._setFont()
 
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
@@ -482,15 +452,15 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
             frame = cv2.merge((contrastedImCells,contrastedImRocks,contrastedImCells))
 
             frame[np.where(contrastedImCells==0)] = [0,0,0]
-            
-            # time stamp
-            t = f'{i*imagingFreq // 60:02d}' + ':' + f'{i*imagingFreq % 60:02d}'
-            timeStampPos = getTimeStampPos(upperLeftXY, t, fontXY)
-            cv2.putText(frame,t,timeStampPos,fontXY.font,fontXY.fontSize,[255,255,255],fontXY.lineThickness,cv2.LINE_AA)
 
             # add scale bars
-            scaleBarXY._addScaleBar(frame, fontXY)
-            scaleBarXZ._addScaleBarZ(frame, fontXZ)
+            frame = scaleBarXY._addScaleBar(frame)
+            frame = scaleBarXZ._addScaleBar(frame)
+            
+            # time stamp
+            t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
+            timeStampPos = (0, lenZ+gap)
+            frame = addTimeStamp(frame, timeStampPos, t, scaleBarXY.font)
 
             # write frame 
             vid.write(frame)
@@ -538,39 +508,25 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
     movieWidth = lenX + lenZ + gap
     movieHeight = lenY + lenZ + gap
-    upperLeftXY = (0, lenZ+gap)
 
     # define scale bars
     scaleBarLength = getScaleBarLength(root, channel.voxelDims)
-    scaleBarLengthInPx = int(scaleBarLength//channel.voxelDims[0])
     scaleBarXY = scaleBar(
-        posY = movieHeight - (scaleBarLengthInPx//10), #76
-        posX = lenX - scaleBarLengthInPx, #468
-        heightInPx = scaleBarLengthInPx//10, #30
-        lengthInPx = scaleBarLengthInPx, #416
+        posY = movieHeight,
+        posX = lenX,
         length = scaleBarLength,
-        textOffset = scaleBarLength//100, #50
+        pxPerMicron = 1/channel.voxelDims[0],
+        font = None,
     )
-    if scaleBarXY.length >= 1000:
-        scaleBarXY.length = scaleBarXY.length/1000
-        scaleBarXY.units = 'mm'
-        scaleBarXY.text = str(scaleBarXY.length) + ' ' + scaleBarXY.units
-    
+    scaleBarXY._setFont()
     scaleBarXZ = scaleBar(
         posY = lenZ,
-        posX = lenX + gap,
-        heightInPx = lenZ//10, #30
-        lengthInPx = lenZ,
+        posX = lenX + gap + lenZ,
         length = int(lenZ*channel.voxelDims[2]),
-        textOffset = 5, #50
+        pxPerMicron = 1/channel.voxelDims[2],
+        font = None,
     )
-
-    # define font
-    fontXY = font(cv2.FONT_HERSHEY_SIMPLEX)
-    fontXY.size, fontXY.lineThickness = fontXY._getFontSize(scaleBarXY)
-
-    fontXZ= font(cv2.FONT_HERSHEY_SIMPLEX)
-    fontXZ.size, fontXZ.lineThickness = fontXZ._getFontSize(scaleBarXZ)
+    scaleBarXZ._setFont()
 
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
@@ -647,14 +603,14 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
             #frame[np.where(scaledIm==0)] = [0,0,0]
 
-            # time stamp
-            t = f'{i*imagingFreq // 60:02d}' + ':' + f'{i*imagingFreq % 60:02d}'
-            timeStampPos = getTimeStampPos(upperLeftXY, t, fontXY)
-            cv2.putText(frame,t,timeStampPos,fontXY.font,fontXY.fontSize,[255,255,255],fontXY.lineThickness,cv2.LINE_AA)
-
             # add scale bars
-            scaleBarXY._addScaleBar(frame, fontXY)
-            scaleBarXZ._addScaleBarZ(frame, fontXZ)
+            frame = scaleBarXY._addScaleBar(frame)
+            frame = scaleBarXZ._addScaleBar(frame)
+
+            # time stamp
+            t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
+            timeStampPos = (0, lenZ+gap)
+            frame = addTimeStamp(frame, timeStampPos, t, scaleBarXY.font)
 
             # write frame 
             vid.write(frame)
