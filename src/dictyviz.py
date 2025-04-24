@@ -225,9 +225,9 @@ def addTimeStamp(frame, timeStampPos, t, font):
     return frame
 
 
-def makeOrthoMaxVideo(root, channel, ext='.avi'):
+def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
-    filename = generateUniqueFilename(channel.name + '_orthomax', ext)
+    filename = generateUniqueFilename(channel.name + '_orthomax_' + cmap, ext)
     nChannel = channel.nChannel
     adjMax = channel.scaleMax
     scaleMin = channel.scaleMin
@@ -283,7 +283,7 @@ def makeOrthoMaxVideo(root, channel, ext='.avi'):
             if channel.name == 'rocks':
                 contrastedIm = 255 - contrastedIm
 
-            frame = cv2.applyColorMap(contrastedIm,cmapy.cmap('viridis'))
+            frame = cv2.applyColorMap(contrastedIm,cmapy.cmap(cmap))
 
             frame[np.where(im==0)] = [0,0,0]
 
@@ -305,10 +305,10 @@ def makeOrthoMaxVideo(root, channel, ext='.avi'):
         vid.release()
         cv2.destroyAllWindows()
 
-def makeSlicedOrthoMaxVideos(root, channel, ext='.avi'):
+def makeSlicedOrthoMaxVideos(root, channel, cmap, ext='.avi'):
 
-    filenames = [generateUniqueFilename(channel.name + '_X_sliced_orthomax', ext),
-                 generateUniqueFilename(channel.name + '_Y_sliced_orthomax', ext)]
+    filenames = [generateUniqueFilename(channel.name + '_X_sliced_orthomax_' + cmap, ext),
+                 generateUniqueFilename(channel.name + '_Y_sliced_orthomax_' + cmap, ext)]
     nChannel = channel.nChannel
     adjMax = channel.scaleMax
     scaleMin = channel.scaleMin
@@ -358,7 +358,7 @@ def makeSlicedOrthoMaxVideos(root, channel, ext='.avi'):
                 if channel.name == 'rocks':
                     contrastedIm = 255 - contrastedIm
 
-                frame = cv2.applyColorMap(contrastedIm,cmapy.cmap('viridis'))
+                frame = cv2.applyColorMap(contrastedIm,cmapy.cmap(cmap))
 
                 frame[np.where(im==0)] = [0,0,0]
 
@@ -489,7 +489,7 @@ def invertAndScale(channel, im):
 
 def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
-    filename = generateUniqueFilename(channel.name + '_zdepth_orthomax', ext)
+    filename = generateUniqueFilename(channel.name + '_zdepth_orthomax_' + cmap, ext)
     nChannel = channel.nChannel
     adjMax = channel.scaleMax
     scaleMin = channel.scaleMin

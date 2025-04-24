@@ -2,6 +2,7 @@ import sys
 import os
 import datetime
 import zarr
+import json
 from tkinter import Tk, filedialog
 from dask.distributed import Client, wait
 
@@ -43,6 +44,12 @@ def main(zarrFile=None):
             channel.voxelDims = dv.getVoxelDimsFromXML(zarrFile+'/OME/METADATA.ome.xml')
             print("Channel " + channel.name + ": Min = " + str(channel.scaleMin) + ", Max = " + str(channel.scaleMax), file=f)
 
+        # define colormaps
+        with open(parentDir+'/parameters.json') as json_file:
+            colormaps = json.load(json_file)['movieSpecs']
+            primaryColormap = colormaps['primaryColormap']
+            zDepthColormap = colormaps['zDepthColormap']
+
         # # create dask client
         try:
             client = Client(threads_per_worker=8, n_workers=1)
@@ -53,13 +60,13 @@ def main(zarrFile=None):
 
         #submit movie tasks
         try:
-            wait([client.submit(dv.makeOrthoMaxVideo, analysisRoot, channels[0]),
-                client.submit(dv.makeOrthoMaxVideo, analysisRoot, channels[1]),
+            wait([client.submit(dv.makeOrthoMaxVideo, analysisRoot, channels[0], primaryColormap),
+                client.submit(dv.makeOrthoMaxVideo, analysisRoot, channels[1], primaryColormap),
                 client.submit(dv.makeCompOrthoMaxVideo, analysisRoot, channels),
-                client.submit(dv.makeSlicedOrthoMaxVideos, analysisRoot, channels[0]),
-                client.submit(dv.makeSlicedOrthoMaxVideos, analysisRoot, channels[1]),
-                client.submit(dv.makeZDepthOrthoMaxVideo, analysisRoot, channels[0], 'gist_rainbow_r'),
-                client.submit(dv.makeZDepthOrthoMaxVideo, analysisRoot, channels[1], 'gist_rainbow_r'),])
+                client.submit(dv.makeSlicedOrthoMaxVideos, analysisRoot, channels[0], primaryColormap),
+                client.submit(dv.makeSlicedOrthoMaxVideos, analysisRoot, channels[1], primaryColormap),
+                client.submit(dv.makeZDepthOrthoMaxVideo, analysisRoot, channels[0], zDepthColormap),
+                client.submit(dv.makeZDepthOrthoMaxVideo, analysisRoot, channels[1], zDepthColormap)])
             print('Ortho max videos created at ', datetime.datetime.now(), file=f)   
         except:
             print('Dask tasks could not be submitted', file=f)
