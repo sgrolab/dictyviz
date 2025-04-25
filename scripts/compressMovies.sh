@@ -53,11 +53,11 @@ for avi_file in $avi_files; do
 
     # Determine the CRF value based on the file size
     if [ "$file_size" -lt $((1 * 1024 * 1024 * 1024)) ]; then
-        crf=28
+        crf=30
     elif [ "$file_size" -lt $((2 * 1024 * 1024 * 1024)) ]; then
-        crf=32
+        crf=34
     else
-        crf=36
+        crf=38
     fi
 
     # Submit the compression job
