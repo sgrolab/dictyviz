@@ -6,13 +6,15 @@
             "name": "cells",
             "channelNumber": 0,
             "scaleMin": 0,
-            "scaleMax": 10000
+            "scaleMax": 10000,
+            "gamma": 1.0
             },
             {
             "name": "rocks",
-            "channelNumber": 0,
+            "channelNumber": 1,
             "scaleMin": 0,
-            "scaleMax": 60000
+            "scaleMax": 60000,
+            "gamma": 1.0
             }
 ],
 "movieSpecs":{

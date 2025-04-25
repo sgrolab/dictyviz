@@ -25,12 +25,13 @@ def createZarrGroup(root, groupName):
     return group
 
 class channel:
-    def __init__(self, name, nChannel, voxelDims, scaleMax, scaleMin=0):
+    def __init__(self, name, nChannel, voxelDims, scaleMax, scaleMin, gamma):
         self.name = name
         self.nChannel = nChannel
         self.voxelDims = voxelDims
         self.scaleMax = scaleMax
         self.scaleMin = scaleMin
+        self.gamma = gamma
 
 def getChannelsFromJSON(jsonFile):
     with open(jsonFile) as f:
@@ -41,7 +42,8 @@ def getChannelsFromJSON(jsonFile):
                                 nChannel=channelInfo["channelNumber"],
                                 voxelDims=None,
                                 scaleMax=channelInfo["scaleMax"],
-                                scaleMin=channelInfo["scaleMin"]))
+                                scaleMin=channelInfo["scaleMin"],
+                                gamma=channelInfo["gamma"]))
     return channels
 
 def getImagingFreqFromJSON(jsonFile):
@@ -156,12 +158,13 @@ def getProjectionDimensions(root):
     lenX = maxY.shape[-1]
     return lenT, lenZ, lenY, lenX
 
-def adjustContrast(im, adjMax, scaleMin):
+def adjustContrast(im, adjMax, scaleMin, gamma):
     im = np.clip(im,scaleMin,adjMax)
     backSub = im - scaleMin
     backSub[np.where(backSub<0)] = 0
     scaledIm = np.divide(backSub,adjMax-scaleMin)
-    contrastedIm = np.multiply(scaledIm,255).astype('uint8')
+    gammaCorrectedIm = np.power(scaledIm,gamma)
+    contrastedIm = np.multiply(gammaCorrectedIm,255).astype('uint8')
     return(contrastedIm)
 
 
@@ -231,6 +234,7 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
     nChannel = channel.nChannel
     adjMax = channel.scaleMax
     scaleMin = channel.scaleMin
+    gamma = channel.gamma
 
     imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
 
@@ -277,7 +281,7 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
             im[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannel,0])
             im[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannel]))
             
-            contrastedIm = adjustContrast(im, adjMax, scaleMin)
+            contrastedIm = adjustContrast(im, adjMax, scaleMin, gamma)
 
             # invert if rock channel
             if channel.name == 'rocks':
@@ -312,6 +316,7 @@ def makeSlicedOrthoMaxVideos(root, channel, cmap, ext='.avi'):
     nChannel = channel.nChannel
     adjMax = channel.scaleMax
     scaleMin = channel.scaleMin
+    gamma = channel.gamma
 
     imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
         
@@ -352,7 +357,7 @@ def makeSlicedOrthoMaxVideos(root, channel, cmap, ext='.avi'):
                     im[(lenZ*j+gap*j):(lenZ*(j+1)+gap*j),:] = copy.copy(np.flip(slicedMax[i,nChannel,j], axis=0))
 
                 # adjust contrast
-                contrastedIm = adjustContrast(im, adjMax, scaleMin)
+                contrastedIm = adjustContrast(im, adjMax, scaleMin, gamma)
 
                 # invert if rock channel
                 if channel.name == 'rocks':
@@ -389,10 +394,12 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
             nChannelCells = channel.nChannel
             scaleMaxCells = channel.scaleMax
             scaleMinCells = channel.scaleMin
+            gammaCells = channel.gamma
         else:
             nChannelRocks = channel.nChannel
             scaleMaxRocks = channel.scaleMax
             scaleMinRocks = channel.scaleMin
+            gammaRocks = channel.gamma
 
     imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
 
@@ -443,8 +450,8 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
             imRocks[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannelRocks,0])
             imRocks[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannelRocks]))
             
-            contrastedImCells = adjustContrast(imCells, scaleMaxCells, scaleMinCells)
-            contrastedImRocks = adjustContrast(imRocks, scaleMaxRocks, scaleMinRocks)
+            contrastedImCells = adjustContrast(imCells, scaleMaxCells, scaleMinCells, gammaCells)
+            contrastedImRocks = adjustContrast(imRocks, scaleMaxRocks, scaleMinRocks, gammaRocks)
 
             # invert rock channel
             contrastedImRocks = 255 - contrastedImRocks
@@ -493,6 +500,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
     nChannel = channel.nChannel
     adjMax = channel.scaleMax
     scaleMin = channel.scaleMin
+    gamma = channel.gamma
 
     imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
 
@@ -535,7 +543,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
             # generate a scaled image for the XY projection
             imXY = copy.copy(maxZ[i,nChannel,0])
-            contrastedImXY = adjustContrast(imXY, adjMax, scaleMin)
+            contrastedImXY = adjustContrast(imXY, adjMax, scaleMin, gamma)
             scaledImGrayscaleXY = invertAndScale(channel.name, contrastedImXY)
 
             # apply z depth colormap based on z depths in slice
@@ -557,7 +565,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
             # generate a scaled image for the XZ projection
             imXZ = copy.copy(maxY[i,nChannel])
-            contrastedImXZ = adjustContrast(imXZ, adjMax, scaleMin)
+            contrastedImXZ = adjustContrast(imXZ, adjMax, scaleMin, gamma)
             scaledImGrayscaleXZ = invertAndScale(channel.name, contrastedImXZ)
 
             # apply z depth colormap based on z depths in slice
@@ -577,7 +585,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
             # generate a scaled image for the YZ projection
             imYZ = copy.copy(np.transpose(maxX[i,nChannel]))
-            contrastedImYZ = adjustContrast(imYZ, adjMax, scaleMin)
+            contrastedImYZ = adjustContrast(imYZ, adjMax, scaleMin, gamma)
             scaledImGrayscaleYZ = invertAndScale(channel.name, contrastedImYZ)
 
             # apply z depth colormap based on z depths in slice
