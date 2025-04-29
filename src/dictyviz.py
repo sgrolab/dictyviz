@@ -142,11 +142,56 @@ def generateUniqueFilename(filename, ext):
         i += 1
     return filename + ext
 
-# replace with an adjustable auto contrast of some sort
-def calcScaleMax(root):
-    maxZ = root['analysis']['max_projections']['maxz']
-    scaleMax = np.max(maxZ)
-    return scaleMax
+def calcAutoContrast(maxProj, nChannel):
+    firstFrame = maxProj[0, nChannel, 0]
+
+    # define histogram of pixel values in first frame
+    histMin = np.min(firstFrame)
+    histMax = np.max(firstFrame)
+    binSize = (histMax - histMin) / 256
+    histogram = np.histogram(firstFrame, bins = 256, range=(histMin, histMax))[0]
+
+    # define limit and threshold
+    height, width = firstFrame.shape[:2]
+    pixelCount = height * width
+    limit = pixelCount/10
+    threshold = int(pixelCount/5000)
+
+    # find the bin for the min and max contrast values
+    bin = -1
+    foundMinBin = False
+    while not foundMinBin and bin < 255:
+        bin += 1
+        countInBin = histogram[bin]
+        if countInBin > limit:
+            countInBin = 0
+        foundMinBin = countInBin > threshold
+    hMinBin = bin
+    
+    bin = 256
+    foundMaxBin = False
+    while not foundMaxBin and bin > 0:
+        bin -= 1
+        countInBin = histogram[bin]
+        if countInBin > limit:
+            countInBin = 0
+        foundMaxBin = countInBin > threshold
+    hMaxBin = bin
+
+    # find scaleMin and scaleMax based on hMinBin and hMaxBin
+    if hMaxBin > hMinBin:
+        scaleMin = histMin + (hMinBin * binSize)
+        scaleMax = histMin + (hMaxBin * binSize)
+    # bad cases: hMaxBin is same or less than hMinBin, just use the min and max of the histogram
+    else:
+        scaleMin = histMin
+        scaleMax = histMax
+
+    print('scaleMin:', scaleMin)
+    print('scaleMax:', scaleMax)
+
+    return scaleMin, scaleMax
+    
 
 def getProjectionDimensions(root):
     # return the dimensions of the max projections
@@ -158,11 +203,11 @@ def getProjectionDimensions(root):
     lenX = maxY.shape[-1]
     return lenT, lenZ, lenY, lenX
 
-def adjustContrast(im, adjMax, scaleMin, gamma):
-    im = np.clip(im,scaleMin,adjMax)
+def adjustContrast(im, scaleMax, scaleMin, gamma):
+    im = np.clip(im,scaleMin,scaleMax)
     backSub = im - scaleMin
     backSub[np.where(backSub<0)] = 0
-    scaledIm = np.divide(backSub,adjMax-scaleMin)
+    scaledIm = np.divide(backSub,scaleMax-scaleMin)
     gammaCorrectedIm = np.power(scaledIm,gamma)
     contrastedIm = np.multiply(gammaCorrectedIm,255).astype('uint8')
     return(contrastedIm)
@@ -232,7 +277,7 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
     filename = generateUniqueFilename(channel.name + '_orthomax_' + cmap, ext)
     nChannel = channel.nChannel
-    adjMax = channel.scaleMax
+    scaleMax = channel.scaleMax
     scaleMin = channel.scaleMin
     gamma = channel.gamma
 
@@ -248,6 +293,12 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
     movieWidth = lenX + lenZ + gap
     movieHeight = lenY + lenZ + gap
+
+    # calc scaleMin, scaleMax, and gamma if not provided
+    if scaleMin is None or scaleMax is None:
+        scaleMin, scaleMax = calcAutoContrast(maxZ, nChannel)
+    if gamma is None:
+        gamma = 1
 
     # define scale bars
     scaleBarLength = getScaleBarLength(root, channel.voxelDims)
@@ -281,7 +332,7 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
             im[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannel,0])
             im[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannel]))
             
-            contrastedIm = adjustContrast(im, adjMax, scaleMin, gamma)
+            contrastedIm = adjustContrast(im, scaleMax, scaleMin, gamma)
 
             # invert if rock channel
             if channel.name == 'rocks':
@@ -314,7 +365,7 @@ def makeSlicedOrthoMaxVideos(root, channel, cmap, ext='.avi'):
     filenames = [generateUniqueFilename(channel.name + '_X_sliced_orthomax_' + cmap, ext),
                  generateUniqueFilename(channel.name + '_Y_sliced_orthomax_' + cmap, ext)]
     nChannel = channel.nChannel
-    adjMax = channel.scaleMax
+    scaleMax = channel.scaleMax
     scaleMin = channel.scaleMin
     gamma = channel.gamma
 
@@ -325,6 +376,12 @@ def makeSlicedOrthoMaxVideos(root, channel, cmap, ext='.avi'):
     lenT, lenZ, _, _ = getProjectionDimensions(root)
 
     gap = 20
+
+    # calc scaleMin, scaleMax, and gamma if not provided
+    if scaleMin is None or scaleMax is None:
+        scaleMin, scaleMax = calcAutoContrast(slicedMaxes[0], nChannel)
+    if gamma is None:
+        gamma = 1 
 
     for filename, slicedMax in zip(filenames, slicedMaxes):
         
@@ -357,7 +414,7 @@ def makeSlicedOrthoMaxVideos(root, channel, cmap, ext='.avi'):
                     im[(lenZ*j+gap*j):(lenZ*(j+1)+gap*j),:] = copy.copy(np.flip(slicedMax[i,nChannel,j], axis=0))
 
                 # adjust contrast
-                contrastedIm = adjustContrast(im, adjMax, scaleMin, gamma)
+                contrastedIm = adjustContrast(im, scaleMax, scaleMin, gamma)
 
                 # invert if rock channel
                 if channel.name == 'rocks':
@@ -413,6 +470,17 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
 
     movieWidth = lenX + lenZ + gap
     movieHeight = lenY + lenZ + gap
+
+    # calc scaleMin, scaleMax, and gamma if not provided
+    if scaleMinCells is None or scaleMaxCells is None:
+        scaleMinCells, scaleMaxCells = calcAutoContrast(maxZ, nChannelCells)
+    if gammaCells is None:
+        gammaCells = 1
+    
+    if scaleMinRocks is None or scaleMaxRocks is None:
+        scaleMinRocks, scaleMaxRocks = calcAutoContrast(maxZ, nChannelRocks)
+    if gammaRocks is None:
+        gammaRocks = 1
 
     # define scale bars
     scaleBarLength = getScaleBarLength(root, channel.voxelDims)
@@ -498,7 +566,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
     filename = generateUniqueFilename(channel.name + '_zdepth_orthomax_' + cmap, ext)
     nChannel = channel.nChannel
-    adjMax = channel.scaleMax
+    scaleMax = channel.scaleMax
     scaleMin = channel.scaleMin
     gamma = channel.gamma
 
@@ -516,6 +584,12 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
     movieWidth = lenX + lenZ + gap
     movieHeight = lenY + lenZ + gap
+
+    # calc scaleMin, scaleMax, and gamma if not provided
+    if scaleMin is None or scaleMax is None:
+        scaleMin, scaleMax = calcAutoContrast(maxZ, nChannel)
+    if gamma is None:
+        gamma = 1
 
     # define scale bars
     scaleBarLength = getScaleBarLength(root, channel.voxelDims)
@@ -543,7 +617,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
             # generate a scaled image for the XY projection
             imXY = copy.copy(maxZ[i,nChannel,0])
-            contrastedImXY = adjustContrast(imXY, adjMax, scaleMin, gamma)
+            contrastedImXY = adjustContrast(imXY, scaleMax, scaleMin, gamma)
             scaledImGrayscaleXY = invertAndScale(channel.name, contrastedImXY)
 
             # apply z depth colormap based on z depths in slice
@@ -565,7 +639,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
             # generate a scaled image for the XZ projection
             imXZ = copy.copy(maxY[i,nChannel])
-            contrastedImXZ = adjustContrast(imXZ, adjMax, scaleMin, gamma)
+            contrastedImXZ = adjustContrast(imXZ, scaleMax, scaleMin, gamma)
             scaledImGrayscaleXZ = invertAndScale(channel.name, contrastedImXZ)
 
             # apply z depth colormap based on z depths in slice
@@ -585,7 +659,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
             # generate a scaled image for the YZ projection
             imYZ = copy.copy(np.transpose(maxX[i,nChannel]))
-            contrastedImYZ = adjustContrast(imYZ, adjMax, scaleMin, gamma)
+            contrastedImYZ = adjustContrast(imYZ, scaleMax, scaleMin, gamma)
             scaledImGrayscaleYZ = invertAndScale(channel.name, contrastedImYZ)
 
             # apply z depth colormap based on z depths in slice
