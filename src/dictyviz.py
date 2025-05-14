@@ -272,11 +272,19 @@ def addTimeStamp(frame, timeStampPos, t, font):
     frame = np.array(img_pil)
     return frame
 
+def scaleXZYZ(im, zToXYRatio):
+    # scale the XZ and YZ projections to match the XY projection
+    scaledIm = np.zeros([int(round(im.shape[0]*zToXYRatio)), im.shape[1]])
+    for i in range(im.shape[0]):
+        scaledIm[int(round(i*zToXYRatio)):int(round((i+1)*zToXYRatio)),:] = im[i,:]
+    return scaledIm
+
 
 def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
     filename = generateUniqueFilename(channel.name + '_orthomax_' + cmap, ext)
     nChannel = channel.nChannel
+    voxelDims = channel.voxelDims
     scaleMax = channel.scaleMax
     scaleMin = channel.scaleMin
     gamma = channel.gamma
@@ -288,11 +296,15 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
     maxX = root['analysis']['max_projections']['maxx']
     
     lenT, lenZ, lenY, lenX = getProjectionDimensions(root)
+
+    # calc scaled Z dimension
+    zToXYRatio = voxelDims[2]/voxelDims[0]
+    scaledLenZ = int(round(lenZ*zToXYRatio))
     
     gap = 20
 
-    movieWidth = lenX + lenZ + gap
-    movieHeight = lenY + lenZ + gap
+    movieWidth = lenX + scaledLenZ + gap
+    movieHeight = lenY + scaledLenZ + gap
 
     # calc scaleMin, scaleMax, and gamma if not provided
     if scaleMin is None or scaleMax is None:
@@ -311,10 +323,10 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
     )
     scaleBarXY._setFont()
     scaleBarXZ = scaleBar(
-        posY = lenZ,
-        posX = lenX + gap + lenZ,
+        posY = scaledLenZ,
+        posX = lenX + gap + scaledLenZ,
         length = int(lenZ*channel.voxelDims[2]),
-        pxPerMicron = 1/channel.voxelDims[2],
+        pxPerMicron = 1/channel.voxelDims[0],
         font = None,
     )
     scaleBarXZ._setFont()
@@ -328,9 +340,11 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
             im = np.zeros([movieHeight,movieWidth])
 
             # copy max projections 
-            im[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannel],axis=0))
-            im[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannel,0])
-            im[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannel]))
+            imXZ = copy.copy(np.flip(maxY[i,nChannel],axis=0))
+            im[0:scaledLenZ,0:lenX] = scaleXZYZ(imXZ, zToXYRatio)
+            im[(scaledLenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannel,0])
+            imYZ = copy.copy(maxX[i,nChannel])
+            im[(scaledLenZ+gap):movieHeight,(lenX+gap):movieWidth] = np.transpose(scaleXZYZ(imYZ, zToXYRatio))
             
             contrastedIm = adjustContrast(im, scaleMax, scaleMin, gamma)
 
@@ -348,7 +362,7 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
             # time stamp
             t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
-            timeStampPos = (0, lenZ+gap)
+            timeStampPos = (0, scaledLenZ+gap)
             frame = addTimeStamp(frame, timeStampPos, t, scaleBarXY.font)
 
             # write frame 
@@ -457,6 +471,7 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
             scaleMaxRocks = channel.scaleMax
             scaleMinRocks = channel.scaleMin
             gammaRocks = channel.gamma
+    voxelDims = channels[0].voxelDims
 
     imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
 
@@ -466,10 +481,14 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
     
     lenT, lenZ, lenY, lenX = getProjectionDimensions(root)
 
+    # calc scaled Z dimension
+    zToXYRatio = voxelDims[2]/voxelDims[0]
+    scaledLenZ = int(round(lenZ*zToXYRatio))
+    
     gap = 20
 
-    movieWidth = lenX + lenZ + gap
-    movieHeight = lenY + lenZ + gap
+    movieWidth = lenX + scaledLenZ + gap
+    movieHeight = lenY + scaledLenZ + gap
 
     # calc scaleMin, scaleMax, and gamma if not provided
     if scaleMinCells is None or scaleMaxCells is None:
@@ -493,10 +512,10 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
     )
     scaleBarXY._setFont()
     scaleBarXZ = scaleBar(
-        posY = lenZ,
-        posX = lenX + gap + lenZ,
+        posY = scaledLenZ,
+        posX = lenX + gap + scaledLenZ,
         length = int(lenZ*channel.voxelDims[2]),
-        pxPerMicron = 1/channel.voxelDims[2],
+        pxPerMicron = 1/channel.voxelDims[0],
         font = None,
     )
     scaleBarXZ._setFont()
@@ -509,14 +528,18 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
             imCells = np.zeros([movieHeight,movieWidth])
             imRocks = np.zeros([movieHeight,movieWidth])
 
-            # copy max projections 
-            imCells[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannelCells],axis=0))
-            imCells[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannelCells,0])
-            imCells[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannelCells]))
+            # copy max projections
+            imCellsXZ = copy.copy(np.flip(maxY[i,nChannelCells],axis=0))
+            imCells[0:scaledLenZ,0:lenX] = scaleXZYZ(imCellsXZ, zToXYRatio)
+            imCells[(scaledLenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannelCells,0])
+            imCellsYZ = copy.copy(maxX[i,nChannelCells])
+            imCells[(scaledLenZ+gap):movieHeight,(lenX+gap):movieWidth] = np.transpose(scaleXZYZ(imCellsYZ, zToXYRatio))
 
-            imRocks[0:lenZ,0:lenX] = copy.copy(np.flip(maxY[i,nChannelRocks],axis=0))
-            imRocks[(lenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannelRocks,0])
-            imRocks[(lenZ+gap):movieHeight,(lenX+gap):movieWidth] = copy.copy(np.transpose(maxX[i,nChannelRocks]))
+            imRocksXZ = copy.copy(np.flip(maxY[i,nChannelRocks],axis=0))
+            imRocks[0:scaledLenZ,0:lenX] = scaleXZYZ(imRocksXZ, zToXYRatio)
+            imRocks[(scaledLenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannelRocks,0])
+            imRocksYZ = copy.copy(maxX[i,nChannelRocks])
+            imRocks[(scaledLenZ+gap):movieHeight,(lenX+gap):movieWidth] = np.transpose(scaleXZYZ(imRocksYZ, zToXYRatio))
             
             contrastedImCells = adjustContrast(imCells, scaleMaxCells, scaleMinCells, gammaCells)
             contrastedImRocks = adjustContrast(imRocks, scaleMaxRocks, scaleMinRocks, gammaRocks)
@@ -534,7 +557,7 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
             
             # time stamp
             t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
-            timeStampPos = (0, lenZ+gap)
+            timeStampPos = (0, scaledLenZ+gap)
             frame = addTimeStamp(frame, timeStampPos, t, scaleBarXY.font)
 
             # write frame 
@@ -566,6 +589,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
     filename = generateUniqueFilename(channel.name + '_zdepth_orthomax_' + cmap, ext)
     nChannel = channel.nChannel
+    voxelDims = channel.voxelDims
     scaleMax = channel.scaleMax
     scaleMin = channel.scaleMin
     gamma = channel.gamma
@@ -577,13 +601,18 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
     maxX = root['analysis']['max_projections']['maxx']
     
     lenT, lenZ, lenY, lenX = getProjectionDimensions(root)
+    
+    # calc scaled Z dimension
+    zToXYRatio = voxelDims[2]/voxelDims[0]
+    scaledLenZ = int(round(lenZ*zToXYRatio))
 
     zDepthColormap = generateZDepthColormap(lenZ, cmap)
-    
+    zDepthColormapXZYZ = generateZDepthColormap(scaledLenZ, cmap)
+
     gap = 20
 
-    movieWidth = lenX + lenZ + gap
-    movieHeight = lenY + lenZ + gap
+    movieWidth = lenX + scaledLenZ + gap
+    movieHeight = lenY + scaledLenZ + gap
 
     # calc scaleMin, scaleMax, and gamma if not provided
     if scaleMin is None or scaleMax is None:
@@ -602,10 +631,10 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
     )
     scaleBarXY._setFont()
     scaleBarXZ = scaleBar(
-        posY = lenZ,
-        posX = lenX + gap + lenZ,
+        posY = scaledLenZ,
+        posX = lenX + gap + scaledLenZ,
         length = int(lenZ*channel.voxelDims[2]),
-        pxPerMicron = 1/channel.voxelDims[2],
+        pxPerMicron = 1/channel.voxelDims[0],
         font = None,
     )
     scaleBarXZ._setFont()
@@ -614,12 +643,10 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
     try:
         for i in tqdm(range(lenT)):
-
             # generate a scaled image for the XY projection
             imXY = copy.copy(maxZ[i,nChannel,0])
             contrastedImXY = adjustContrast(imXY, scaleMax, scaleMin, gamma)
             scaledImGrayscaleXY = invertAndScale(channel.name, contrastedImXY)
-
             # apply z depth colormap based on z depths in slice
             zDepths = maxZ[i,nChannel,1]
             # TODO: make into functions for XY color assignment and XZ/YZ color assignment
@@ -636,42 +663,46 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
             frameXY = np.multiply(scaledImGrayscaleXY,imBGRValsXY).astype('uint8')
 
-
             # generate a scaled image for the XZ projection
             imXZ = copy.copy(maxY[i,nChannel])
+            imXZ = scaleXZYZ(imXZ, zToXYRatio)
+
             contrastedImXZ = adjustContrast(imXZ, scaleMax, scaleMin, gamma)
             scaledImGrayscaleXZ = invertAndScale(channel.name, contrastedImXZ)
 
             # apply z depth colormap based on z depths in slice
-            imBluesXZ = np.zeros([lenZ, lenX]).astype(int)
-            imGreensXZ = np.zeros([lenZ, lenX]).astype(int)
-            imRedsXZ = np.zeros([lenZ, lenX]).astype(int)
-            for z in range(0,lenZ):
+            imBluesXZ = np.zeros([scaledLenZ, lenX]).astype(int)
+            imGreensXZ = np.zeros([scaledLenZ, lenX]).astype(int)
+            imRedsXZ = np.zeros([scaledLenZ, lenX]).astype(int)
+            #TODO: get rid of second for loop, [zDepth] is the same for all x
+            for z in range(0,scaledLenZ):
                 for x in range(0,lenX):
                     zDepth = z
-                    imBluesXZ[z,x] = zDepthColormap[zDepth][0]
-                    imGreensXZ[z,x] = zDepthColormap[zDepth][1]
-                    imRedsXZ[z,x] = zDepthColormap[zDepth][2]
+                    imBluesXZ[z,x] = zDepthColormapXZYZ[zDepth][0]
+                    imGreensXZ[z,x] = zDepthColormapXZYZ[zDepth][1]
+                    imRedsXZ[z,x] = zDepthColormapXZYZ[zDepth][2]
             imBGRValsXZ = cv2.merge([imBluesXZ, imGreensXZ, imRedsXZ])
 
             frameXZ = np.multiply(scaledImGrayscaleXZ,imBGRValsXZ).astype('uint8')
             frameXZ = np.flip(frameXZ, axis=0)
 
             # generate a scaled image for the YZ projection
-            imYZ = copy.copy(np.transpose(maxX[i,nChannel]))
+            imYZ = copy.copy(maxX[i,nChannel])
+            imYZ = np.transpose(scaleXZYZ(imYZ, zToXYRatio))
             contrastedImYZ = adjustContrast(imYZ, scaleMax, scaleMin, gamma)
             scaledImGrayscaleYZ = invertAndScale(channel.name, contrastedImYZ)
 
             # apply z depth colormap based on z depths in slice
-            imBluesYZ = np.zeros([lenY, lenZ]).astype(int)
-            imGreensYZ = np.zeros([lenY, lenZ]).astype(int)
-            imRedsYZ = np.zeros([lenY, lenZ]).astype(int)
+            imBluesYZ = np.zeros([lenY, scaledLenZ]).astype(int)
+            imGreensYZ = np.zeros([lenY, scaledLenZ]).astype(int)
+            imRedsYZ = np.zeros([lenY, scaledLenZ]).astype(int)
+            #TODO: get rid of first for loop, [zDepth] is the same for all y
             for y in range(0,lenY):
-                for z in range(0,lenZ):
+                for z in range(0,scaledLenZ):
                     zDepth = z
-                    imBluesYZ[y,z] = zDepthColormap[zDepth][0]
-                    imGreensYZ[y,z] = zDepthColormap[zDepth][1]
-                    imRedsYZ[y,z] = zDepthColormap[zDepth][2]
+                    imBluesYZ[y,z] = zDepthColormapXZYZ[zDepth][0]
+                    imGreensYZ[y,z] = zDepthColormapXZYZ[zDepth][1]
+                    imRedsYZ[y,z] = zDepthColormapXZYZ[zDepth][2]
             imBGRValsYZ = cv2.merge([imBluesYZ, imGreensYZ, imRedsYZ])
 
             frameYZ = np.multiply(scaledImGrayscaleYZ,imBGRValsYZ).astype('uint8')
@@ -679,9 +710,9 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
             # initialize frame 
             frame = np.zeros([movieHeight,movieWidth,3]).astype('uint8')
 
-            frame[0:lenZ,0:lenX,:] = frameXZ
-            frame[(lenZ+gap):movieHeight,0:lenX,:] = frameXY
-            frame[(lenZ+gap):movieHeight,(lenX+gap):movieWidth,:] = frameYZ
+            frame[0:scaledLenZ,0:lenX,:] = frameXZ
+            frame[(scaledLenZ+gap):movieHeight,0:lenX,:] = frameXY
+            frame[(scaledLenZ+gap):movieHeight,(lenX+gap):movieWidth,:] = frameYZ
 
             #frame[np.where(scaledIm==0)] = [0,0,0]
 
@@ -691,7 +722,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
             # time stamp
             t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
-            timeStampPos = (0, lenZ+gap)
+            timeStampPos = (0, scaledLenZ+gap)
             frame = addTimeStamp(frame, timeStampPos, t, scaleBarXY.font)
 
             # write frame 
