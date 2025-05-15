@@ -307,9 +307,9 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
     movieHeight = lenY + scaledLenZ + gap
 
     # calc scaleMin, scaleMax, and gamma if not provided
-    if scaleMin is None or scaleMax is None:
+    if scaleMin is "None" or scaleMax is "None":
         scaleMin, scaleMax = calcAutoContrast(maxZ, nChannel)
-    if gamma is None:
+    if gamma is "None":
         gamma = 1
 
     # define scale bars
@@ -392,9 +392,9 @@ def makeSlicedOrthoMaxVideos(root, channel, cmap, ext='.avi'):
     gap = 20
 
     # calc scaleMin, scaleMax, and gamma if not provided
-    if scaleMin is None or scaleMax is None:
+    if scaleMin is "None" or scaleMax is "None":
         scaleMin, scaleMax = calcAutoContrast(slicedMaxes[0], nChannel)
-    if gamma is None:
+    if gamma is "None":
         gamma = 1 
 
     for filename, slicedMax in zip(filenames, slicedMaxes):
@@ -491,14 +491,14 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
     movieHeight = lenY + scaledLenZ + gap
 
     # calc scaleMin, scaleMax, and gamma if not provided
-    if scaleMinCells is None or scaleMaxCells is None:
+    if scaleMinCells is "None" or scaleMaxCells is "None":
         scaleMinCells, scaleMaxCells = calcAutoContrast(maxZ, nChannelCells)
-    if gammaCells is None:
+    if gammaCells is "None":
         gammaCells = 1
     
-    if scaleMinRocks is None or scaleMaxRocks is None:
+    if scaleMinRocks is "None" or scaleMaxRocks is "None":
         scaleMinRocks, scaleMaxRocks = calcAutoContrast(maxZ, nChannelRocks)
-    if gammaRocks is None:
+    if gammaRocks is "None":
         gammaRocks = 1
 
     # define scale bars
@@ -615,9 +615,9 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
     movieHeight = lenY + scaledLenZ + gap
 
     # calc scaleMin, scaleMax, and gamma if not provided
-    if scaleMin is None or scaleMax is None:
+    if scaleMin is "None" or scaleMax is "None":
         scaleMin, scaleMax = calcAutoContrast(maxZ, nChannel)
-    if gamma is None:
+    if gamma is "None":
         gamma = 1
 
     # define scale bars
