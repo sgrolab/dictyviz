@@ -25,25 +25,29 @@ def createZarrGroup(root, groupName):
     return group
 
 class channel:
-    def __init__(self, name, nChannel, voxelDims, scaleMax, scaleMin, gamma):
+    def __init__(self, name, nChannel, scaleMax, scaleMin, gamma=1.0, invertChannel=False, voxelDims=None):
         self.name = name
         self.nChannel = nChannel
-        self.voxelDims = voxelDims
         self.scaleMax = scaleMax
         self.scaleMin = scaleMin
         self.gamma = gamma
+        self.invertChannel = invertChannel
+        self.voxelDims = voxelDims
 
 def getChannelsFromJSON(jsonFile):
     with open(jsonFile) as f:
         channelSpecs = json.load(f)["channels"]
     channels = []
     for channelInfo in channelSpecs:
-        channels.append(channel(name=channelInfo["name"],
+        currentChannel = channel(name=channelInfo["name"],
                                 nChannel=channelInfo["channelNumber"],
-                                voxelDims=None,
                                 scaleMax=channelInfo["scaleMax"],
-                                scaleMin=channelInfo["scaleMin"],
-                                gamma=channelInfo["gamma"]))
+                                scaleMin=channelInfo["scaleMin"],)
+        if "gamma" in channelInfo:
+            currentChannel.gamma = channelInfo["gamma"]
+        if "invertChannel" in channelInfo:
+            currentChannel.invertChannel = channelInfo["invertChannel"]
+        channels.append(currentChannel)
     return channels
 
 def getImagingFreqFromJSON(jsonFile):
@@ -403,7 +407,7 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
             contrastedIm = adjustContrast(im, scaleMax, scaleMin, gamma)
 
             # invert if rock channel
-            if channel.name == 'rocks':
+            if channel.invertChannel:
                 contrastedIm = 255 - contrastedIm
 
             frame = cv2.applyColorMap(contrastedIm,cmapy.cmap(cmap))
@@ -485,7 +489,7 @@ def makeSlicedOrthoMaxVideos(root, channel, cmap, ext='.avi'):
                 contrastedIm = adjustContrast(im, scaleMax, scaleMin, gamma)
 
                 # invert if rock channel
-                if channel.name == 'rocks':
+                if channel.invertChannel:
                     contrastedIm = 255 - contrastedIm
 
                 frame = cv2.applyColorMap(contrastedIm,cmapy.cmap(cmap))
@@ -631,9 +635,9 @@ def generateZDepthColormap(lenZ, cmap):
         zDepthColormap[slice] = cmapy.color(cmap, zDepthGrayVal)
     return zDepthColormap
 
-def invertAndScale(channel, im):
+def invertAndScale(im, invert):
     # invert if rock channel
-    if channel == 'rocks':
+    if invert:
         im = 255 - im
     scaledIm = np.divide(im,255)
     scaledImGrayscale = cv2.merge([scaledIm, scaledIm, scaledIm])
@@ -700,7 +704,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
             # generate a scaled image for the XY projection
             imXY = copy.copy(maxZ[i,nChannel,0])
             contrastedImXY = adjustContrast(imXY, scaleMax, scaleMin, gamma)
-            scaledImGrayscaleXY = invertAndScale(channel.name, contrastedImXY)
+            scaledImGrayscaleXY = invertAndScale(contrastedImXY, channel.invertChannel)
             # apply z depth colormap based on z depths in slice
             zDepths = maxZ[i,nChannel,1]
             # TODO: make into functions for XY color assignment and XZ/YZ color assignment
@@ -716,7 +720,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
             imXZ = scaleXZYZ(imXZ, zToXYRatio)
 
             contrastedImXZ = adjustContrast(imXZ, scaleMax, scaleMin, gamma)
-            scaledImGrayscaleXZ = invertAndScale(channel.name, contrastedImXZ)
+            scaledImGrayscaleXZ = invertAndScale(contrastedImXZ, channel.invertChannel)
 
             # apply z depth colormap based on z depths in slice
             imBGRValsXZ = np.zeros([scaledLenZ, lenX, 3]).astype(int)
@@ -730,7 +734,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
             imYZ = copy.copy(maxX[i,nChannel])
             imYZ = scaleXZYZ(imYZ, zToXYRatio)
             contrastedImYZ = adjustContrast(imYZ, scaleMax, scaleMin, gamma)
-            scaledImGrayscaleYZ = invertAndScale(channel.name, contrastedImYZ)
+            scaledImGrayscaleYZ = invertAndScale(contrastedImYZ, channel.invertChannel)
 
             # apply z depth colormap based on z depths in slice
             imBGRValsYZ = np.zeros([scaledLenZ, lenY, 3]).astype(int)

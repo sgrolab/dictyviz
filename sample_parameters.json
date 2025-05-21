@@ -7,14 +7,16 @@
             "channelNumber": 0,
             "scaleMin": 0,
             "scaleMax": 10000,
-            "gamma": 1.0
+            "gamma": 1.0,
+            "invertChannel": false
             },
             {
             "name": "rocks",
             "channelNumber": 1,
             "scaleMin": 0,
             "scaleMax": 60000,
-            "gamma": 1.0
+            "gamma": 1.0,
+            "invertChannel": true
             }
 ],
 "movieSpecs":{
