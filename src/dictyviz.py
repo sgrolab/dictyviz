@@ -517,18 +517,6 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
 
     filename = generateUniqueFilename('comp_orthomax', ext)
 
-    # set channel values
-    for channel in channels:
-        if channel.name == 'cells':
-            nChannelCells = channel.nChannel
-            scaleMaxCells = channel.scaleMax
-            scaleMinCells = channel.scaleMin
-            gammaCells = channel.gamma
-        else:
-            nChannelRocks = channel.nChannel
-            scaleMaxRocks = channel.scaleMax
-            scaleMinRocks = channel.scaleMin
-            gammaRocks = channel.gamma
     voxelDims = channels[0].voxelDims
 
     imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
@@ -549,15 +537,11 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
     movieHeight = lenY + scaledLenZ + gap
 
     # calc scaleMin, scaleMax, and gamma if not provided
-    if scaleMinCells == "None" or scaleMaxCells == "None":
-        scaleMinCells, scaleMaxCells = calcAutoContrast(maxZ, nChannelCells)
-    if gammaCells == "None":
-        gammaCells = 1
-    
-    if scaleMinRocks == "None" or scaleMaxRocks == "None":
-        scaleMinRocks, scaleMaxRocks = calcAutoContrast(maxZ, nChannelRocks)
-    if gammaRocks == "None":
-        gammaRocks = 1
+    for channel in channels:
+        if channel.scaleMin == "None" or channel.scaleMax == "None":
+            channel.scaleMin, channel.scaleMax = calcAutoContrast(maxZ, channel.nChannel)
+        if channel.gamma == "None":
+            channel.gamma = 1
 
     # define scale bars
     scaleBarLength = getScaleBarLength(root, channel.voxelDims)
@@ -579,40 +563,39 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
     scaleBarXZ._setFont()
 
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
-
+    
     try:
         for i in tqdm(range(lenT)):
-            
-            imCells = np.zeros([movieHeight,movieWidth])
-            imRocks = np.zeros([movieHeight,movieWidth])
+            for channel in channels:
+                im = np.zeros([movieHeight,movieWidth])
 
-            # copy max projections
-            imCellsXZ = copy.copy(np.flip(maxY[i,nChannelCells],axis=0))
-            imCells[0:scaledLenZ,0:lenX] = scaleXZYZ(imCellsXZ, zToXYRatio)
-            imCells[(scaledLenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannelCells,0])
-            imCellsYZ = copy.copy(maxX[i,nChannelCells])
-            imCells[(scaledLenZ+gap):movieHeight,(lenX+gap):movieWidth] = np.transpose(scaleXZYZ(imCellsYZ, zToXYRatio))
+                # copy max projections 
+                imXZ = copy.copy(np.flip(maxY[i,channel.nChannel],axis=0))
+                im[0:scaledLenZ,0:lenX] = scaleXZYZ(imXZ, zToXYRatio)
+                im[(scaledLenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,channel.nChannel,0])
+                imYZ = copy.copy(maxX[i,channel.nChannel])
+                im[(scaledLenZ+gap):movieHeight,(lenX+gap):movieWidth] = np.transpose(scaleXZYZ(imYZ, zToXYRatio))
+                
+                contrastedIm = adjustContrast(im, channel.scaleMax, channel.scaleMin, channel.gamma)
 
-            imRocksXZ = copy.copy(np.flip(maxY[i,nChannelRocks],axis=0))
-            imRocks[0:scaledLenZ,0:lenX] = scaleXZYZ(imRocksXZ, zToXYRatio)
-            imRocks[(scaledLenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannelRocks,0])
-            imRocksYZ = copy.copy(maxX[i,nChannelRocks])
-            imRocks[(scaledLenZ+gap):movieHeight,(lenX+gap):movieWidth] = np.transpose(scaleXZYZ(imRocksYZ, zToXYRatio))
-            
-            contrastedImCells = adjustContrast(imCells, scaleMaxCells, scaleMinCells, gammaCells)
-            contrastedImRocks = adjustContrast(imRocks, scaleMaxRocks, scaleMinRocks, gammaRocks)
+                # invert if rock channel
+                if channel.invertChannel:
+                    contrastedIm = 255 - contrastedIm
 
-            # invert rock channel
-            contrastedImRocks = 255 - contrastedImRocks
+                # apply color map
+                if channel.name == 'rocks':
+                    greenIm = contrastedIm
+                else:
+                    purpleIm = contrastedIm
 
-            frame = cv2.merge((contrastedImCells,contrastedImRocks,contrastedImCells))
-
-            frame[np.where(contrastedImCells==0)] = [0,0,0]
+            # merge images
+            frame = cv2.merge((purpleIm,greenIm,purpleIm))
+            frame[np.where(im==0)] = [0,0,0]
 
             # add scale bars
             frame = scaleBarXY._addScaleBar(frame)
             frame = scaleBarXZ._addScaleBar(frame)
-            
+
             # time stamp
             t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
             timeStampPos = (0, scaledLenZ+gap)
