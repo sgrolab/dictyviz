@@ -20,6 +20,7 @@
             }
 ],
 "movieSpecs":{
+    "sliceDepth": "auto",
     "primaryColormap": "viridis",
     "zDepthColormap": "gist_rainbow_r"
 }
