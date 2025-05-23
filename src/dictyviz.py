@@ -50,6 +50,15 @@ def getChannelsFromJSON(jsonFile):
         channels.append(currentChannel)
     return channels
 
+def getSliceDepthFromJSON(jsonFile):
+    with open(jsonFile) as f:
+        movieSpecs = json.load(f)["movieSpecs"]
+        if "sliceDepth" in movieSpecs:
+            sliceDepth = movieSpecs["sliceDepth"]
+        else:
+            sliceDepth = "auto"
+    return sliceDepth
+
 def getImagingFreqFromJSON(jsonFile):
     with open(jsonFile) as f:
         imagingFreq = json.load(f)["imagingParameters"]["imagingFrequency"]
@@ -66,9 +75,13 @@ def getVoxelDimsFromXML(xmlFile, res_lvl=0):
 
 
 def calcMaxProjections(root, analysisRoot, res_lvl=0):
+    # TODO: add cropID as a kwarg
 
     # define resolution level
     resArray = root['0'][str(res_lvl)]
+
+    # TODO: if cropping, get crop parameters from parameters.json
+        # TODO: redefine resArray to be cropped version
 
     # get dataset dimensions
     lenT, lenCh, lenZ, lenY, lenX = resArray.shape
@@ -76,6 +89,7 @@ def calcMaxProjections(root, analysisRoot, res_lvl=0):
     analysisGroup = analysisRoot['analysis']
 
     # create max projections group
+    # TODO: add cropID to max_projections string
     maxProjectionsGroup = createZarrGroup(analysisGroup, 'max_projections')
 
     # create zarr arrays for each max projection 
@@ -93,8 +107,13 @@ def calcMaxProjections(root, analysisRoot, res_lvl=0):
 
 
 def calcSlicedMaxProjections(root, analysisRoot, res_lvl=0):
+    #TODO: add cropID as a kwarg
+
     # define resolution level
     resArray = root['0'][str(res_lvl)]
+
+    # TODO: if cropping, get crop parameters from parameters.json
+        # TODO: redefine resArray to be cropped version
 
     # get dataset dimensions
     lenT, lenCh, lenZ, lenY, lenX = resArray.shape
@@ -102,39 +121,48 @@ def calcSlicedMaxProjections(root, analysisRoot, res_lvl=0):
     analysisGroup = analysisRoot['analysis']
 
     # create max projections group
+    # TODO: add cropID to sliced_max_projections string
     slicedMaxProjectionsGroup = createZarrGroup(analysisGroup, 'sliced_max_projections')
 
+    # get slice depth from parameters.json
+    sliceDepth = getSliceDepthFromJSON(analysisRoot.store.path + '/parameters.json')
+    voxelDims = getVoxelDimsFromXML(root.store.path + '/OME/METADATA.ome.xml')
+
     # set number of slices
-    #sliceDepth = 83 # 83px*2.41um/px = 200 um
-    nSlices = 20
-    sliceDepthX = lenX//(nSlices-1)
-    sliceDepthY = lenY//(nSlices-1)
-    #nSlicesX = math.ceil(lenX/sliceDepth)
-    #nSlicesY = math.ceil(lenY/sliceDepth)
+    if sliceDepth == "auto":
+        nSlicesX = 20
+        nSlicesY = 20
+        sliceDepthX = lenX//(nSlicesX-1)
+        sliceDepthY = lenY//(nSlicesY-1)
+    else:
+        sliceDepthX = int(sliceDepth//voxelDims[0])
+        nSlicesX = lenX//sliceDepthX
+        sliceDepthY = int(sliceDepth//voxelDims[1])
+        nSlicesY = lenY//sliceDepthY
 
     # create zarr arrays for each max projection
-    slicedMaxX = slicedMaxProjectionsGroup.zeros('sliced_maxx',shape=(lenT,lenCh,nSlices,lenZ,lenY),chunks=(1,1,2,lenZ,lenY))
-    slicedMaxY = slicedMaxProjectionsGroup.zeros('sliced_maxy',shape=(lenT,lenCh,nSlices,lenZ,lenX),chunks=(1,1,2,lenZ,lenX))
+    slicedMaxX = slicedMaxProjectionsGroup.zeros('sliced_maxx',shape=(lenT,lenCh,nSlicesX,lenZ,lenY),chunks=(1,1,2,lenZ,lenY))
+    slicedMaxY = slicedMaxProjectionsGroup.zeros('sliced_maxy',shape=(lenT,lenCh,nSlicesY,lenZ,lenX),chunks=(1,1,2,lenZ,lenX))
 
     for i in tqdm(range(lenT)):
         for j in range(lenCh):
-            for k in range(nSlices-1):
+            for k in range(nSlicesX-1):
                 rangeX = [k*sliceDepthX, (k+1)*sliceDepthX]
                 frame = resArray[i,j,:,:,rangeX[0]:rangeX[1]]
                 slicedMaxX[i,j,k] = np.max(frame,axis=2)
             #fill last chunk with the rest of the data
-            rangeX = [(nSlices-1)*sliceDepthX, lenX]
+            rangeX = [(nSlicesX-1)*sliceDepthX, lenX]
             frame = resArray[i,j,:,:,rangeX[0]:rangeX[1]]
-            slicedMaxX[i,j,nSlices-1] = np.max(frame,axis=2)
+            slicedMaxX[i,j,nSlicesX-1] = np.max(frame,axis=2)
 
-            for k in range(nSlices-1):
+            for k in range(nSlicesY-1):
                 rangeY = [k*sliceDepthY, (k+1)*sliceDepthY]
                 frame = resArray[i,j,:,rangeY[0]:rangeY[1],:]
                 slicedMaxY[i,j,k] = np.max(frame,axis=1)
             #fill last chunk with the rest of the data
-            rangeY = [(nSlices-1)*sliceDepthY, lenY]
+            rangeY = [(nSlicesY-1)*sliceDepthY, lenY]
             frame = resArray[i,j,:,rangeY[0]:rangeY[1],:]
-            slicedMaxY[i,j,nSlices-1] = np.max(frame,axis=1)
+            slicedMaxY[i,j,nSlicesY-1] = np.max(frame,axis=1)
 
 def generateUniqueFilename(filename, ext):
     i = 1
@@ -199,8 +227,12 @@ def calcAutoContrast(maxProj, nChannel):
 
 def getProjectionDimensions(root):
     # return the dimensions of the max projections
-    maxX = root['analysis']['max_projections']['maxx']
-    maxY = root['analysis']['max_projections']['maxy']
+    if 'maxx' in root:
+        maxX = root['maxx']
+        maxY = root['maxy']
+    else:
+        maxX = root['sliced_maxx']
+        maxY = root['sliced_maxy']
     lenT = maxX.shape[0]
     lenZ = maxX.shape[-2]
     lenY = maxX.shape[-1]
@@ -347,11 +379,12 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
     scaleMin = channel.scaleMin
     gamma = channel.gamma
 
-    imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
+    imagingFreq = getImagingFreqFromJSON(root.store.path + '/../../parameters.json')
 
-    maxZ = root['analysis']['max_projections']['maxz']
-    maxY = root['analysis']['max_projections']['maxy']
-    maxX = root['analysis']['max_projections']['maxx']
+    # TODO: change root to max_projections root
+    maxZ = root['maxz']
+    maxY = root['maxy']
+    maxX = root['maxx']
     
     lenT, lenZ, lenY, lenX = getProjectionDimensions(root)
 
@@ -441,9 +474,10 @@ def makeSlicedOrthoMaxVideos(root, channel, cmap, ext='.avi'):
     scaleMin = channel.scaleMin
     gamma = channel.gamma
 
-    imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
-        
-    slicedMaxes = [root['analysis']['sliced_max_projections']['sliced_maxx'], root['analysis']['sliced_max_projections']['sliced_maxy']]
+    imagingFreq = getImagingFreqFromJSON(root.store.path + '/../../parameters.json')
+    
+    # TODO: change root to sliced_max_projections root
+    slicedMaxes = [root['sliced_maxx'], root['sliced_maxy']]
 
     lenT, lenZ, _, _ = getProjectionDimensions(root)
 
@@ -519,11 +553,12 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
 
     voxelDims = channels[0].voxelDims
 
-    imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
+    imagingFreq = getImagingFreqFromJSON(root.store.path + '/../../parameters.json')
 
-    maxZ = root['analysis']['max_projections']['maxz']
-    maxY = root['analysis']['max_projections']['maxy']
-    maxX = root['analysis']['max_projections']['maxx']
+    # TODO: change root to max_projections root
+    maxZ = root['maxz']
+    maxY = root['maxy']
+    maxX = root['maxx']
     
     lenT, lenZ, lenY, lenX = getProjectionDimensions(root)
 
@@ -635,11 +670,12 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
     scaleMin = channel.scaleMin
     gamma = channel.gamma
 
-    imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
+    imagingFreq = getImagingFreqFromJSON(root.store.path + '/../../parameters.json')
 
-    maxZ = root['analysis']['max_projections']['maxz']
-    maxY = root['analysis']['max_projections']['maxy']
-    maxX = root['analysis']['max_projections']['maxx']
+    # TODO: change root to max_projections root
+    maxZ = root['maxz']
+    maxY = root['maxy']
+    maxX = root['maxx']
     
     lenT, lenZ, lenY, lenX = getProjectionDimensions(root)
     
