@@ -74,8 +74,7 @@ def getVoxelDimsFromXML(xmlFile, res_lvl=0):
     return [pixelSizeX, pixelSizeY, pixelSizeZ]
 
 
-def calcMaxProjections(root, analysisRoot, res_lvl=0):
-    # TODO: add cropID as a kwarg
+def calcMaxProjections(root, maxProjectionsRoot, res_lvl=0):
 
     # define resolution level
     resArray = root['0'][str(res_lvl)]
@@ -86,16 +85,10 @@ def calcMaxProjections(root, analysisRoot, res_lvl=0):
     # get dataset dimensions
     lenT, lenCh, lenZ, lenY, lenX = resArray.shape
 
-    analysisGroup = analysisRoot['analysis']
-
-    # create max projections group
-    # TODO: add cropID to max_projections string
-    maxProjectionsGroup = createZarrGroup(analysisGroup, 'max_projections')
-
     # create zarr arrays for each max projection 
-    maxZ = maxProjectionsGroup.zeros('maxz',shape=(lenT,lenCh,2,lenY,lenX),chunks=(1,lenCh,2,lenY,lenX))
-    maxX = maxProjectionsGroup.zeros('maxx',shape=(lenT,lenCh,lenZ,lenY),chunks=(1,lenCh,lenZ,lenY))
-    maxY = maxProjectionsGroup.zeros('maxy',shape=(lenT,lenCh,lenZ,lenX),chunks=(1,lenCh,lenZ,lenX))
+    maxZ = maxProjectionsRoot.zeros('maxz',shape=(lenT,lenCh,2,lenY,lenX),chunks=(1,lenCh,2,lenY,lenX))
+    maxX = maxProjectionsRoot.zeros('maxx',shape=(lenT,lenCh,lenZ,lenY),chunks=(1,lenCh,lenZ,lenY))
+    maxY = maxProjectionsRoot.zeros('maxy',shape=(lenT,lenCh,lenZ,lenX),chunks=(1,lenCh,lenZ,lenX))
 
     # iterate through each timepoint and compute max projections
     for i in tqdm(range(lenT)):
@@ -106,8 +99,7 @@ def calcMaxProjections(root, analysisRoot, res_lvl=0):
             maxY[i,j] = np.max(frame,axis=1)          
 
 
-def calcSlicedMaxProjections(root, analysisRoot, res_lvl=0):
-    #TODO: add cropID as a kwarg
+def calcSlicedMaxProjections(root, slicedMaxProjectionsRoot, res_lvl=0):
 
     # define resolution level
     resArray = root['0'][str(res_lvl)]
@@ -118,14 +110,8 @@ def calcSlicedMaxProjections(root, analysisRoot, res_lvl=0):
     # get dataset dimensions
     lenT, lenCh, lenZ, lenY, lenX = resArray.shape
 
-    analysisGroup = analysisRoot['analysis']
-
-    # create max projections group
-    # TODO: add cropID to sliced_max_projections string
-    slicedMaxProjectionsGroup = createZarrGroup(analysisGroup, 'sliced_max_projections')
-
     # get slice depth from parameters.json
-    sliceDepth = getSliceDepthFromJSON(analysisRoot.store.path + '/parameters.json')
+    sliceDepth = getSliceDepthFromJSON(slicedMaxProjectionsRoot.store.path + '/../parameters.json')
     voxelDims = getVoxelDimsFromXML(root.store.path + '/OME/METADATA.ome.xml')
 
     # set number of slices
@@ -141,8 +127,8 @@ def calcSlicedMaxProjections(root, analysisRoot, res_lvl=0):
         nSlicesY = lenY//sliceDepthY
 
     # create zarr arrays for each max projection
-    slicedMaxX = slicedMaxProjectionsGroup.zeros('sliced_maxx',shape=(lenT,lenCh,nSlicesX,lenZ,lenY),chunks=(1,1,2,lenZ,lenY))
-    slicedMaxY = slicedMaxProjectionsGroup.zeros('sliced_maxy',shape=(lenT,lenCh,nSlicesY,lenZ,lenX),chunks=(1,1,2,lenZ,lenX))
+    slicedMaxX = slicedMaxProjectionsRoot.zeros('sliced_maxx',shape=(lenT,lenCh,nSlicesX,lenZ,lenY),chunks=(1,1,2,lenZ,lenY))
+    slicedMaxY = slicedMaxProjectionsRoot.zeros('sliced_maxy',shape=(lenT,lenCh,nSlicesY,lenZ,lenX),chunks=(1,1,2,lenZ,lenX))
 
     for i in tqdm(range(lenT)):
         for j in range(lenCh):
