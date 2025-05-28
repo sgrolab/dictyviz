@@ -2,6 +2,11 @@
 "imagingParameters":{
     "imagingFrequency": 10
 },
+"croppingParameters":{
+    "cropX": [0, 50],
+    "cropY": [0, 50],
+    "cropZ": null
+},
 "channels": [{
             "name": "cells",
             "channelNumber": 0,
