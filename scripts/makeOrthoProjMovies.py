@@ -15,7 +15,7 @@ import dictyviz as dv
 from dictyviz import channel
 
 # TODO: add cropID as kwarg
-def main(zarrFile=None):
+def main(zarrFile=None, cropID=None):
     if zarrFile is None:
         # select zarr file
         Tk().withdraw() 
@@ -23,27 +23,31 @@ def main(zarrFile=None):
         if not os.path.isdir(zarrFile):
             print(f"Error: The provided path '{zarrFile}' is not a valid directory.")
             sys.exit(1)
+    if cropID is None:
+        cropID = ''
     print(zarrFile)
+    print('Crop ID:', cropID)
     
     # create movies directory in the parent folder of the zarr file
     parentDir = os.path.dirname(zarrFile)
     moviesDir = os.path.join(parentDir, 'movies')
     if not os.path.exists(moviesDir):
         os.makedirs(moviesDir)
+    # if cropping, create a subdirectory for the cropID
+    if cropID != '':
+        moviesDir = os.path.join(moviesDir, 'movies'+cropID)
+        if not os.path.exists(moviesDir):
+            os.makedirs(moviesDir)
     os.chdir(moviesDir)
-    # TODO: if cropping, create a subdirectory for the cropID
-    # TODO: chdir to the cropID subdirectory
 
     outputFile = parentDir + '/makeOrthoMaxProjMovies_out.txt'
     with open(outputFile, 'w') as f:
         print('Zarr file:', zarrFile, '\n', file=f)
-        # TODO: print cropID
+        print('Movies directory:', moviesDir, '\n', file=f)
 
         # open analysis zarr file
-        # TODO: refactor to use the actual max_projections folder as root
-        #analysisRoot = zarr.open(parentDir, mode='r+')
-        maxProjectionsRoot = zarr.open(parentDir + '/analysis/max_projections', mode='r+')
-        slicedMaxProjectionsRoot = zarr.open(parentDir + '/analysis/sliced_max_projections', mode='r+')
+        maxProjectionsRoot = zarr.open(parentDir + '/analysis/max_projections' + cropID, mode='r+')
+        slicedMaxProjectionsRoot = zarr.open(parentDir + '/analysis/sliced_max_projections' + cropID, mode='r+')
 
         # define channels
         channels = dv.getChannelsFromJSON(parentDir+'/parameters.json')
@@ -57,7 +61,7 @@ def main(zarrFile=None):
             primaryColormap = colormaps['primaryColormap']
             zDepthColormap = colormaps['zDepthColormap']
 
-        # # create dask client
+        # create dask client
         try:
             client = Client(threads_per_worker=8, n_workers=1)
             print('\nDask client created at ', datetime.datetime.now(), file=f)
@@ -66,7 +70,6 @@ def main(zarrFile=None):
             sys.exit() 
 
         #submit movie tasks
-        # TODO: switch analysisRoot to max_projections root
         try:
             wait([client.submit(dv.makeOrthoMaxVideo, maxProjectionsRoot, channels[0], primaryColormap),
                 client.submit(dv.makeOrthoMaxVideo, maxProjectionsRoot, channels[1], primaryColormap),
@@ -89,6 +92,11 @@ if __name__ == '__main__':
         if not os.path.isdir(zarrFile):
             print(f"Error: The provided path '{zarrFile}' is not a valid directory.")
             sys.exit(1)
+        if len(sys.argv) > 2:
+            cropID = sys.argv[2]
+            if not cropID.startswith('_'):
+                cropID = '_' + cropID
     else:
         zarrFile = None
-    main(zarrFile)
+        cropID = None
+    main(zarrFile, cropID)
