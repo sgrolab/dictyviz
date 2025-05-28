@@ -50,6 +50,19 @@ def getChannelsFromJSON(jsonFile):
         channels.append(currentChannel)
     return channels
 
+def getCroppingDimsFromJSON(jsonFile):
+    with open(jsonFile) as f:
+        try:
+            croppingParams = json.load(f)["croppingParameters"]
+            if croppingParams:
+                cropX = croppingParams.get("cropX", [None, None])
+                cropY = croppingParams.get("cropY", [None, None])
+                cropZ = croppingParams.get("cropZ", [None, None])
+            return [cropX, cropY, cropZ]
+        except Exception as e:
+            return None
+
+
 def getSliceDepthFromJSON(jsonFile):
     with open(jsonFile) as f:
         movieSpecs = json.load(f)["movieSpecs"]
@@ -79,8 +92,10 @@ def calcMaxProjections(root, maxProjectionsRoot, res_lvl=0):
     # define resolution level
     resArray = root['0'][str(res_lvl)]
 
-    # TODO: if cropping, get crop parameters from parameters.json
-        # TODO: redefine resArray to be cropped version
+    #if cropping, get crop parameters from parameters.json and redefine resArray
+    cropDims = getCroppingDimsFromJSON(maxProjectionsRoot.store.path + '/../../parameters.json')
+    if cropDims:
+        resArray = resArray[:, :, cropDims[2][0]:cropDims[2][1], cropDims[1][0]:cropDims[1][1], cropDims[0][0]:cropDims[0][1]]
 
     # get dataset dimensions
     lenT, lenCh, lenZ, lenY, lenX = resArray.shape
@@ -104,14 +119,16 @@ def calcSlicedMaxProjections(root, slicedMaxProjectionsRoot, res_lvl=0):
     # define resolution level
     resArray = root['0'][str(res_lvl)]
 
-    # TODO: if cropping, get crop parameters from parameters.json
-        # TODO: redefine resArray to be cropped version
+    #if cropping, get crop parameters from parameters.json and redefine resArray
+    cropDims = getCroppingDimsFromJSON(slicedMaxProjectionsRoot.store.path + '/../../parameters.json')
+    if cropDims:
+        resArray = resArray[:, :, cropDims[2][0]:cropDims[2][1], cropDims[1][0]:cropDims[1][1], cropDims[0][0]:cropDims[0][1]]
 
     # get dataset dimensions
     lenT, lenCh, lenZ, lenY, lenX = resArray.shape
 
     # get slice depth from parameters.json
-    sliceDepth = getSliceDepthFromJSON(slicedMaxProjectionsRoot.store.path + '/../parameters.json')
+    sliceDepth = getSliceDepthFromJSON(slicedMaxProjectionsRoot.store.path + '/../../parameters.json')
     voxelDims = getVoxelDimsFromXML(root.store.path + '/OME/METADATA.ome.xml')
 
     # set number of slices
