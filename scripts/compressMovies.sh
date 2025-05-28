@@ -1,28 +1,27 @@
 #/bin/bash
 
-# Check if a folder was provided as a command-line argument
-if [ -n "$1" ]; then
+# Check if a folder and a cropID were provided
+if [ $# -ge 2 ]; then
     selected_folder="$1"
+    cropID="$2"
     # Validate that the provided path is a directory
     if [ ! -d "$selected_folder" ]; then
         echo "Error: The provided path '$selected_folder' is not a valid directory."
         exit 1
     fi
 else
-    # Prompt the user to select a folder using zenity
-    selected_folder=$(zenity --file-selection --directory --title="Select a zarr file" --filename="$(pwd)/")
-
-    # Check if the user canceled the dialog
-    if [ -z "$selected_folder" ]; then
-        echo "No folder selected. Exiting."
-        exit 1
-    fi
+    echo "Usage: $0 <selected_folder> <cropID>"
+    exit 1
 fi
 
 # Change to the movies directory outside of the selected folder
-movies_dir="$selected_folder/../movies"
+if [[ "$cropID" == "" ]]; then
+    movies_dir="$selected_folder/../movies"
+else
+    movies_dir="$selected_folder/../movies/movies$cropID"
+fi
 if [ ! -d "$movies_dir" ]; then
-    echo "Error: There is no movies directory associated with the selected folder."
+    echo "Error: There is no movies directory associated with the selected folder and crop ID."
     exit 1
 fi
 
