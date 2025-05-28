@@ -5,7 +5,7 @@
 "croppingParameters":{
     "cropX": [0, 50],
     "cropY": [0, 50],
-    "cropZ": null
+    "cropZ": [0, 50]
 },
 "channels": [{
             "name": "cells",
