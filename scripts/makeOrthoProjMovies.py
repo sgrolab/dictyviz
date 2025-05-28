@@ -94,8 +94,6 @@ if __name__ == '__main__':
             sys.exit(1)
         if len(sys.argv) > 2:
             cropID = sys.argv[2]
-            if not cropID.startswith('_'):
-                cropID = '_' + cropID
     else:
         zarrFile = None
         cropID = None
