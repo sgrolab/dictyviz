@@ -11,7 +11,7 @@ sys.path.append(src_path)
 
 import dictyviz as dv
 
-def main(zarrFile=None):
+def main(zarrFile=None, cropID=None):
     if zarrFile is None:
         # select zarr file
         Tk().withdraw() 
@@ -20,6 +20,7 @@ def main(zarrFile=None):
             print(f"Error: The provided path '{zarrFile}' is not a valid directory.")
             sys.exit(1)
     print(zarrFile)
+    print('Crop ID:', cropID)
 
     # get parent directory of zarr file
     parentDir = os.path.dirname(zarrFile)
@@ -28,22 +29,30 @@ def main(zarrFile=None):
     outputFile = parentDir + '/calcOrthoMaxProjs_out.txt'
     with open(outputFile, 'w') as f:
         print('Zarr file:', zarrFile, '\n', file=f)
+        if cropID is None:
+            cropID = ''
+        else:
+            print('Crop ID:', cropID, '\n', file=f)
 
         # create root stores and analysis group
         dv.createRootStore(zarrFile)
         root = zarr.open(zarrFile, mode='r+')
-        dv.createRootStore(parentDir)
-        analysisRoot = zarr.open(parentDir, mode='r+')
-        dv.createZarrGroup(analysisRoot, 'analysis')
-        print('Root store created at ', datetime.datetime.now(), file=f)
+        
+        if 'analysis' not in parentDir:
+            os.makedirs(parentDir + '/analysis', exist_ok=True)
+        analysisDir = parentDir + '/analysis'
+        print('Analysis directory:', analysisDir, file=f)
 
         # check if projections have already been calculated
-        if 'max_projections' in analysisRoot['analysis']:
+        if os.path.isdir(os.path.join(analysisDir, 'max_projections' + cropID)):
             print('Max projections already calculated, skipping calculation.', file=f)
             return
 
         # calculate max projections
-        dv.calcMaxProjections(root, analysisRoot, res_lvl=0)
+        dv.createRootStore(parentDir + '/analysis/max_projections' + cropID)
+        maxProjectionsRoot = zarr.open(parentDir + '/analysis/max_projections' + cropID, mode='r+')
+        print('Root store created at ', datetime.datetime.now(), file=f)
+        dv.calcMaxProjections(root, maxProjectionsRoot, res_lvl=0)
         print('Max projections calculated at ', datetime.datetime.now(), file=f)
 
 if __name__ == '__main__':
@@ -52,6 +61,11 @@ if __name__ == '__main__':
         if not os.path.isdir(zarrFile):
             print(f"Error: The provided path '{zarrFile}' is not a valid directory.")
             sys.exit(1)
+        if len(sys.argv) > 2:
+            cropID = sys.argv[2]
+            if not cropID.startswith('_'):
+                cropID = '_' + cropID
     else:
         zarrFile = None
-    main(zarrFile)
+        cropID = None
+    main(zarrFile, cropID)
