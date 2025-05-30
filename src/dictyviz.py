@@ -468,10 +468,9 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
         vid.release()
         cv2.destroyAllWindows()
 
-def makeSlicedOrthoMaxVideos(root, channel, cmap, ext='.avi'):
+def makeSlicedOrthoMaxVideos(root, channel, dim, cmap, ext='.avi'):
 
-    filenames = [generateUniqueFilename(channel.name + '_X_sliced_orthomax_' + cmap, ext),
-                 generateUniqueFilename(channel.name + '_Y_sliced_orthomax_' + cmap, ext)]
+    filename = generateUniqueFilename(channel.name + "_" + dim + '_sliced_orthomax_' + cmap, ext)
     nChannel = channel.nChannel
     scaleMax = channel.scaleMax
     scaleMin = channel.scaleMin
@@ -479,8 +478,7 @@ def makeSlicedOrthoMaxVideos(root, channel, cmap, ext='.avi'):
 
     imagingFreq = getImagingFreqFromJSON(root.store.path + '/../../parameters.json')
     
-    # TODO: change root to sliced_max_projections root
-    slicedMaxes = [root['sliced_maxx'], root['sliced_maxy']]
+    slicedMax = root['sliced_max'+dim]
 
     lenT, lenZ, _, _ = getProjectionDimensions(root)
 
@@ -488,67 +486,65 @@ def makeSlicedOrthoMaxVideos(root, channel, cmap, ext='.avi'):
 
     # calc scaleMin, scaleMax, and gamma if not provided
     if scaleMin == "None" or scaleMax == "None":
-        scaleMin, scaleMax = calcAutoContrast(slicedMaxes[0], nChannel)
+        scaleMin, scaleMax = calcAutoContrast(slicedMax, nChannel)
     if gamma == "None":
         gamma = 1 
-
-    for filename, slicedMax in zip(filenames, slicedMaxes):
         
-        nSlices = slicedMax.shape[2]
+    nSlices = slicedMax.shape[2]
 
-        movieWidth = slicedMax.shape[-1]
-        movieHeight = (lenZ * nSlices) + (gap * (nSlices-1))
+    movieWidth = slicedMax.shape[-1]
+    movieHeight = (lenZ * nSlices) + (gap * (nSlices-1))
 
-        # define scale bars
-        scaleBarLength = getScaleBarLength(root, channel.voxelDims)
-        scaleBarXY = scaleBar(
-            posY = movieHeight,
-            posX = movieWidth,
-            length = scaleBarLength,
-            pxPerMicron = 1/channel.voxelDims[0],
-            font = None,
-        )
-        scaleBarXY._setFont()
+    # define scale bars
+    scaleBarLength = getScaleBarLength(root, channel.voxelDims)
+    scaleBarXY = scaleBar(
+        posY = movieHeight,
+        posX = movieWidth,
+        length = scaleBarLength,
+        pxPerMicron = 1/channel.voxelDims[0],
+        font = None,
+    )
+    scaleBarXY._setFont()
 
-        vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
+    vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
-        try:
-            for i in tqdm(range(lenT)):
+    try:
+        for i in tqdm(range(lenT)):
 
-                # initialize frame
-                im = np.zeros([movieHeight,movieWidth])
+            # initialize frame
+            im = np.zeros([movieHeight,movieWidth])
 
-                # copy max projections 
-                for j in range(nSlices):
-                    im[(lenZ*j+gap*j):(lenZ*(j+1)+gap*j),:] = copy.copy(np.flip(slicedMax[i,nChannel,j], axis=0))
+            # copy max projections 
+            for j in range(nSlices):
+                im[(lenZ*j+gap*j):(lenZ*(j+1)+gap*j),:] = copy.copy(np.flip(slicedMax[i,nChannel,j], axis=0))
 
-                # adjust contrast
-                contrastedIm = adjustContrast(im, scaleMax, scaleMin, gamma)
+            # adjust contrast
+            contrastedIm = adjustContrast(im, scaleMax, scaleMin, gamma)
 
-                # invert if rock channel
-                if channel.invertChannel:
-                    contrastedIm = 255 - contrastedIm
+            # invert if rock channel
+            if channel.invertChannel:
+                contrastedIm = 255 - contrastedIm
 
-                frame = cv2.applyColorMap(contrastedIm,cmapy.cmap(cmap))
+            frame = cv2.applyColorMap(contrastedIm,cmapy.cmap(cmap))
 
-                frame[np.where(im==0)] = [0,0,0]
+            frame[np.where(im==0)] = [0,0,0]
 
-                # add scale bar
-                frame = scaleBarXY._addScaleBar(frame)
+            # add scale bar
+            frame = scaleBarXY._addScaleBar(frame)
 
-                # time stamp
-                t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
-                timeStampPos = (0, 0)
-                frame = addTimeStamp(frame, timeStampPos, t, scaleBarXY.font)
+            # time stamp
+            t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
+            timeStampPos = (0, 0)
+            frame = addTimeStamp(frame, timeStampPos, t, scaleBarXY.font)
 
-                # write frame
-                vid.write(frame)
+            # write frame
+            vid.write(frame)
 
-            vid.release()
-            cv2.destroyAllWindows()
-        except:
-            vid.release()
-            cv2.destroyAllWindows()
+        vid.release()
+        cv2.destroyAllWindows()
+    except:
+        vid.release()
+        cv2.destroyAllWindows()
 
 def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
 
