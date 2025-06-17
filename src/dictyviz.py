@@ -280,6 +280,60 @@ def scaleXZYZ(im, zToXYRatio):
     return scaledIm
 
 
+def makeOrthoMaxVideoClean(root, channel, cmap, ext='.avi'):
+
+    filename = generateUniqueFilename(channel.name + '_orthomax_' + cmap, ext)
+    nChannel = channel.nChannel
+    voxelDims = channel.voxelDims
+    scaleMax = channel.scaleMax
+    scaleMin = channel.scaleMin
+    gamma = channel.gamma
+
+    imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
+
+    maxZ = root['analysis']['max_projections']['maxz']
+    
+    lenT, lenZ, lenY, lenX = getProjectionDimensions(root)
+
+    movieWidth = lenX 
+    movieHeight = lenY
+
+    # calc scaleMin, scaleMax, and gamma if not provided
+    if scaleMin == "None" or scaleMax == "None":
+        scaleMin, scaleMax = calcAutoContrast(maxZ, nChannel)
+    if gamma == "None":
+        gamma = 1
+    
+    vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
+
+    try: 
+        for i in tqdm(range(lenT)):
+
+            # initialize frame 
+            im = np.zeros([movieHeight,movieWidth])
+
+            # copy max projections 
+            im[:movieHeight,0:lenX] = copy.copy(maxZ[i,nChannel,0])
+            
+            contrastedIm = adjustContrast(im, scaleMax, scaleMin, gamma)
+
+            # invert if rock channel
+            if channel.name == 'rocks':
+                contrastedIm = 255 - contrastedIm
+
+            frame = cv2.applyColorMap(contrastedIm,cmapy.cmap(cmap))
+
+            frame[np.where(im==0)] = [0,0,0]
+
+            # write frame 
+            vid.write(frame)
+
+        vid.release()
+        cv2.destroyAllWindows()
+    except:
+        vid.release()
+        cv2.destroyAllWindows()
+
 def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
 
     filename = generateUniqueFilename(channel.name + '_orthomax_' + cmap, ext)
