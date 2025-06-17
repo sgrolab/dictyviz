@@ -292,44 +292,17 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
     imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
 
     maxZ = root['analysis']['max_projections']['maxz']
-    maxY = root['analysis']['max_projections']['maxy']
-    maxX = root['analysis']['max_projections']['maxx']
     
     lenT, lenZ, lenY, lenX = getProjectionDimensions(root)
 
-    # calc scaled Z dimension
-    zToXYRatio = voxelDims[2]/voxelDims[0]
-    scaledLenZ = int(round(lenZ*zToXYRatio))
-    
-    gap = 20
-
-    movieWidth = lenX + scaledLenZ + gap
-    movieHeight = lenY + scaledLenZ + gap
+    movieWidth = lenX 
+    movieHeight = lenY
 
     # calc scaleMin, scaleMax, and gamma if not provided
     if scaleMin == "None" or scaleMax == "None":
         scaleMin, scaleMax = calcAutoContrast(maxZ, nChannel)
     if gamma == "None":
         gamma = 1
-
-    # define scale bars
-    scaleBarLength = getScaleBarLength(root, channel.voxelDims)
-    scaleBarXY = scaleBar(
-        posY = movieHeight,
-        posX = lenX,
-        length = scaleBarLength,
-        pxPerMicron = 1/channel.voxelDims[0],
-        font = None,
-    )
-    scaleBarXY._setFont()
-    scaleBarXZ = scaleBar(
-        posY = scaledLenZ,
-        posX = lenX + gap + scaledLenZ,
-        length = int(lenZ*channel.voxelDims[2]),
-        pxPerMicron = 1/channel.voxelDims[0],
-        font = None,
-    )
-    scaleBarXZ._setFont()
     
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
@@ -340,11 +313,7 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
             im = np.zeros([movieHeight,movieWidth])
 
             # copy max projections 
-            imXZ = copy.copy(np.flip(maxY[i,nChannel],axis=0))
-            im[0:scaledLenZ,0:lenX] = scaleXZYZ(imXZ, zToXYRatio)
-            im[(scaledLenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannel,0])
-            imYZ = copy.copy(maxX[i,nChannel])
-            im[(scaledLenZ+gap):movieHeight,(lenX+gap):movieWidth] = np.transpose(scaleXZYZ(imYZ, zToXYRatio))
+            im[:movieHeight,0:lenX] = copy.copy(maxZ[i,nChannel,0])
             
             contrastedIm = adjustContrast(im, scaleMax, scaleMin, gamma)
 
@@ -355,15 +324,6 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
             frame = cv2.applyColorMap(contrastedIm,cmapy.cmap(cmap))
 
             frame[np.where(im==0)] = [0,0,0]
-
-            # add scale bars
-            frame = scaleBarXY._addScaleBar(frame)
-            frame = scaleBarXZ._addScaleBar(frame)
-
-            # time stamp
-            t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
-            timeStampPos = (0, scaledLenZ+gap)
-            frame = addTimeStamp(frame, timeStampPos, t, scaleBarXY.font)
 
             # write frame 
             vid.write(frame)
