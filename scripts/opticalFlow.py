@@ -52,8 +52,7 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
             break
 
         curr = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        flow = cv2.calcOpticalFlowFarneback(prev, curr, None,
-                                            0.5, 3, 15, 3, 5, 1.2, 0)
+        flow = cv2.calcOpticalFlowFarneback(prev, curr, None, 0.5, 3, 15, 5, 7, 1.1, 0)
         mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
         hsv[..., 0] = ang * 180 / np.pi / 2  # direction → hue
         hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)  # magnitude → brightness
