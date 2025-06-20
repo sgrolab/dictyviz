@@ -4,25 +4,30 @@ import datetime
 import numpy as np
 import cv2
 import imageio
+from tkinter import Tk, filedialog
 
 def find_video_near_zarr(zarr_folder):
     parent = os.path.dirname(zarr_folder)
-    zarr_basename = os.path.basename(zarr_folder).replace('.zarr', '')
-
     movies_dir = os.path.join(parent, "movies")
+
     if not os.path.isdir(movies_dir):
         print(f"Error: 'movies/' folder not found near {zarr_folder}")
         return None
 
-    # Look for video file that matches zarr basename
-    for filename in os.listdir(movies_dir):
-        if filename.lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
-            name_only = os.path.splitext(filename)[0]
-            if name_only == zarr_basename:
-                return os.path.join(movies_dir, filename)
+    # Open file chooser in movies folder
+    print(f"Please select a video file from: {movies_dir}")
+    Tk().withdraw()  # hide the root tkinter window
+    video_path = filedialog.askopenfilename(
+        initialdir=movies_dir,
+        title="Select a video file",
+        filetypes=[("Video files", "*.mp4 *.avi *.mov *.mkv")]
+    )
 
-    print(f"No video file matching '{zarr_basename}.*' found in {movies_dir}")
-    return None
+    if not video_path or not os.path.isfile(video_path):
+        print("No video file selected or invalid path.")
+        return None
+
+    return video_path
 
 def compute_farneback_optical_flow(video_path, output_dir, log_file):
     cap = cv2.VideoCapture(video_path)
@@ -34,7 +39,7 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
 
     prev = cv2.cvtColor(first_frame, cv2.COLOR_BGR2GRAY)
     hsv = np.zeros_like(first_frame)
-    hsv[..., 1] = 255
+    hsv[..., 1] = 255  # full saturation for HSV
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -47,10 +52,11 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
             break
 
         curr = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        flow = cv2.calcOpticalFlowFarneback(prev, curr, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+        flow = cv2.calcOpticalFlowFarneback(prev, curr, None,
+                                            0.5, 3, 15, 3, 5, 1.2, 0)
         mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
-        hsv[..., 0] = ang * 180 / np.pi / 2
-        hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+        hsv[..., 0] = ang * 180 / np.pi / 2  # direction → hue
+        hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)  # magnitude → brightness
         rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
         imageio.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), rgb_flow)
