@@ -71,7 +71,7 @@ def main(zarrFile=None, cropID=None):
 
         #submit movie tasks
         try:
-            wait([client.submit(dv.makeOrthoMaxVideoClean, maxProjectionsRoot, channels[0], primaryColormap),
+            wait([client.submit(dv.makeOrthoMaxVideo, maxProjectionsRoot, channels[0], primaryColormap),
                 client.submit(dv.makeOrthoMaxVideo, maxProjectionsRoot, channels[1], primaryColormap),
                 client.submit(dv.makeCompOrthoMaxVideo, maxProjectionsRoot, channels),
                 client.submit(dv.makeSlicedOrthoMaxVideos, slicedMaxProjectionsRoot, channels[0], 'x', primaryColormap),

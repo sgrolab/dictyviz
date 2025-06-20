@@ -79,8 +79,8 @@ def main(zarr_folder):
 
     parent_dir = os.path.dirname(zarr_folder)
     zarr_name = os.path.basename(zarr_folder).replace(".zarr", "")
-    output_dir = os.path.join(parent_dir, f"{zarr_name}_optical_flow_output")
-    log_path = os.path.join(parent_dir, f"{zarr_name}_opticalFlow_out.txt")
+    output_dir = os.path.join(parent_dir, "optical_flow_output")
+    log_path = os.path.join(output_dir, "opticalFlow_out.txt")
 
     with open(log_path, 'w') as f:
         print('Zarr folder:', zarr_folder, file=f)
