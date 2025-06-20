@@ -9,5 +9,4 @@ if [ -z "$zarr_folder" ]; then
     exit 1
 fi
 
-bsub -n 8 -W 01:00 ./opticalFlow.py "${zarr_folder}"
-
+bsub -n 8 -W 01:00 python3 ./opticalFlow.py "${zarr_folder}"
