@@ -321,7 +321,7 @@ def scaleXZYZ(im, zToXYRatio):
 
 def makeOrthoMaxVideoClean(root, channel, cmap, ext='.avi'):
 
-    filename = generateUniqueFilename(channel.name + '_orthomax_' + cmap, ext)
+    filename = generateUniqueFilename(channel.name + '_orthomax_clean_' + cmap, ext)
     nChannel = channel.nChannel
     voxelDims = channel.voxelDims
     scaleMax = channel.scaleMax
