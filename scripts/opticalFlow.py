@@ -20,7 +20,7 @@ def find_video_near_zarr(zarr_folder):
     video_path = filedialog.askopenfilename(
         initialdir=movies_dir,
         title="Select a video file",
-        filetypes=[("Video files", "*.mp4 *.avi *.mov *.mkv")]
+        filetypes=[("AVI files", "*.avi")]
     )
 
     if not video_path or not os.path.isfile(video_path):
@@ -78,8 +78,10 @@ def main(zarr_folder):
     if not video_path:
         sys.exit(1)
 
-    output_dir = os.path.join(zarr_folder, "optical_flow_output")
-    log_path = os.path.join(zarr_folder, "opticalFlow_out.txt")
+    parent_dir = os.path.dirname(zarr_folder)
+    zarr_name = os.path.basename(zarr_folder).replace(".zarr", "")
+    output_dir = os.path.join(parent_dir, f"{zarr_name}_optical_flow_output")
+    log_path = os.path.join(parent_dir, f"{zarr_name}_opticalFlow_out.txt")
 
     with open(log_path, 'w') as f:
         print('Zarr folder:', zarr_folder, file=f)
