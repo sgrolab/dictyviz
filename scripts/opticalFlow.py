@@ -1,10 +1,30 @@
+#!/usr/bin/env python3
+
 import sys
 import os
 import datetime
 import numpy as np
 import cv2
 import imageio
-from tkinter import Tk, filedialog
+
+def find_video_near_zarr(zarr_folder):
+    parent = os.path.dirname(zarr_folder)
+    zarr_basename = os.path.basename(zarr_folder).replace('.zarr', '')
+
+    movies_dir = os.path.join(parent, "movies")
+    if not os.path.isdir(movies_dir):
+        print(f"Error: 'movies/' folder not found near {zarr_folder}")
+        return None
+
+    # Look for video file that matches zarr basename
+    for filename in os.listdir(movies_dir):
+        if filename.lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
+            name_only = os.path.splitext(filename)[0]
+            if name_only == zarr_basename:
+                return os.path.join(movies_dir, filename)
+
+    print(f"No video file matching '{zarr_basename}.*' found in {movies_dir}")
+    return None
 
 def compute_farneback_optical_flow(video_path, output_dir, log_file):
     cap = cv2.VideoCapture(video_path)
@@ -35,55 +55,42 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
         hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
         rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
-        output_path = os.path.join(output_dir, f"flow_{frame_index:04d}.png")
-        imageio.imwrite(output_path, rgb_flow)
+        imageio.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), rgb_flow)
         flow_list.append(flow)
 
         prev = curr
         frame_index += 1
 
     cap.release()
-    flow_stack = np.stack(flow_list)
-    np.save(os.path.join(output_dir, "flow_raw.npy"), flow_stack)
+    np.save(os.path.join(output_dir, "flow_raw.npy"), np.stack(flow_list))
+    print(f"Saved {frame_index} flow frames and raw data to: {output_dir}", file=log_file)
 
-    print(f"Saved {frame_index} flow frames to {output_dir}", file=log_file)
-    print(f"Saved raw flow data to {os.path.join(output_dir, 'flow_raw.npy')}", file=log_file)
+def main(zarr_folder):
+    if not os.path.isdir(zarr_folder):
+        print(f"Error: The provided path '{zarr_folder}' is not a valid directory.")
+        sys.exit(1)
 
-def main(videoFile=None):
-    if videoFile is None:
-        Tk().withdraw()
-        videoFile = filedialog.askopenfilename(
-            title='Select a video file',
-            filetypes=[("Video files", "*.mp4 *.avi *.mov *.mkv"), ("All files", "*.*")]
-        )
-        if not videoFile or not os.path.isfile(videoFile):
-            print(f"Error: The selected path '{videoFile}' is not a valid file.")
-            sys.exit(1)
+    video_path = find_video_near_zarr(zarr_folder)
+    if not video_path:
+        sys.exit(1)
 
-    print("Video File:", videoFile)
+    output_dir = os.path.join(zarr_folder, "optical_flow_output")
+    log_path = os.path.join(zarr_folder, "opticalFlow_out.txt")
 
-    parentDir = os.path.dirname(videoFile)
-    os.chdir(parentDir)
-
-    outputDir = os.path.join(parentDir, 'optical_flow_output')
-    logPath = os.path.join(parentDir, 'opticalFlow_out.txt')
-
-    with open(logPath, 'w') as f:
-        print('Video file:', videoFile, '\n', file=f)
-        print('Output directory:', outputDir, '\n', file=f)
+    with open(log_path, 'w') as f:
+        print('Zarr folder:', zarr_folder, file=f)
+        print('Video file:', video_path, file=f)
+        print('Output directory:', output_dir, file=f)
         print('Optical flow calculation started at', datetime.datetime.now(), '\n', file=f)
 
-        compute_farneback_optical_flow(videoFile, outputDir, f)
+        compute_farneback_optical_flow(video_path, output_dir, f)
 
         print('Optical flow calculation completed at', datetime.datetime.now(), '\n', file=f)
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        videoFile = sys.argv[1]
-        if not os.path.isfile(videoFile):
-            print(f"Error: The provided path '{videoFile}' is not a valid file.")
-            sys.exit(1)
-    else:
-        videoFile = None
+    if len(sys.argv) < 2:
+        print("Usage: python3 opticalFlow.py <zarr_folder>")
+        sys.exit(1)
 
-    main(videoFile)
+    zarr_folder = sys.argv[1]
+    main(zarr_folder)
