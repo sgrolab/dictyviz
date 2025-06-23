@@ -18,9 +18,9 @@ else
 fi
 
 # submit movie creation job if movie doesn't exist
-if [ -f "$movie_file" ]; then
-    echo "Optical flow movie already exists at: $movie_file"
-else
-    echo "Submitting job to create optical flow movie..."
-    bsub -n 8 -W 01:00 -K python3 ./makeOpticalFlowMovie.py "${zarr_folder}"
-fi
+#if [ -f "$movie_file" ]; then
+ #   echo "Optical flow movie already exists at: $movie_file"
+#else
+ #   echo "Submitting job to create optical flow movie..."
+  #  bsub -n 8 -W 01:00 python3 ./makeOpticalFlowMovie.py "${zarr_folder}"
+#fi
