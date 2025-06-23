@@ -2,7 +2,7 @@ import sys
 import os
 import cv2
 
-def make_movie_from_frames(output_dir, output_filename="optical_flow_movie.avi", fps=20):
+def make_movie_from_frames(output_dir, output_filename="optical_flow_movie.avi", fps=10):
     # get list of all PNG frames in output_dir
     frames = sorted([f for f in os.listdir(output_dir) if f.startswith("flow_") and f.endswith(".png")])
     
@@ -17,7 +17,7 @@ def make_movie_from_frames(output_dir, output_filename="optical_flow_movie.avi",
 
     # set up video writer
     output_path = os.path.join(output_dir, output_filename)
-    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
     for fname in frames:
