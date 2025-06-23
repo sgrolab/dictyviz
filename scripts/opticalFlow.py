@@ -90,8 +90,13 @@ def main(zarr_folder):
         sys.exit(1)
 
     parent_dir = os.path.dirname(zarr_folder)
+    print(f"[DEBUG] Parent directory: {parent_dir}")
+
     zarr_name = os.path.basename(zarr_folder).replace(".zarr", "")
+
     output_dir = os.path.join(parent_dir, "optical_flow_output")
+    print(f"[DEBUG] output directory: {output_dir}")
+
     log_path = os.path.join(output_dir, "opticalFlow_out.txt")
 
     # writes logs and run optical flow computation
