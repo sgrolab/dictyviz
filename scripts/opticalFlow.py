@@ -58,7 +58,7 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
         flow = cv2.calcOpticalFlowFarneback(
             prev=prev, curr=curr, flow=None,
             pyr_scale=0.5, levels=3, winsize=15,
-            iterations=5, poly_n=7, poly_sigma=1.1, flags=0
+            iterations=5, poly_n=7, poly_sigma=1.5, flags=0
         )
 
         mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
