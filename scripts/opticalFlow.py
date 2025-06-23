@@ -42,10 +42,6 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
     hsv = np.zeros_like(first_frame) # creates an empty image with the same shape as the first frame  (will later hold the flow visiualization)
     hsv[..., 1] = 255  # set saturation to max for coloring
 
-    print(os.getcwd())
-
-    os.makedirs(output_dir, exist_ok=True)  # ensure output folder exists
-
     frame_index = 0
     flow_list = [] # stores optical flow arrays 
 
@@ -100,6 +96,10 @@ def main(zarr_folder):
     print(f"[DEBUG] output directory: {output_dir}")
 
     log_path = os.path.join(output_dir, "opticalFlow_out.txt")
+
+    print(os.getcwd())
+
+    os.makedirs(output_dir, exist_ok=True)  # ensure output folder exists
 
     # writes logs and run optical flow computation
     with open(log_path, 'w') as f:
