@@ -7,6 +7,10 @@ import cv2
 import imageio
 from tkinter import Tk, filedialog
 
+def sanitize_filename(name):
+    # replaces anything not a-z, A-Z, 0-9, underscore, or dash with underscore
+    return re.sub(r'[^A-Za-z0-9_\-]', '_', name)
+
 def select_video_file():
     Tk().withdraw()
     video_path = filedialog.askopenfilename(
