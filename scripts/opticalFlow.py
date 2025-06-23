@@ -38,21 +38,21 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
         print(f"Error: Could not read video from {video_path}", file=log_file)
         return
 
-    prev = cv2.cvtColor(first_frame, cv2.COLOR_BGR2GRAY)  # grayscale conversion
-    hsv = np.zeros_like(first_frame)
+    prev = cv2.cvtColor(first_frame, cv2.COLOR_BGR2GRAY)  # converts the first frame from color to grayscale since optical flow works better on single-channel intensity images (only cares about change in brightness not color)
+    hsv = np.zeros_like(first_frame) # creates an empty image with the same shape as the first frame  (will later hold the flow visiualization)
     hsv[..., 1] = 255  # set saturation to max for coloring
 
     os.makedirs(output_dir, exist_ok=True)  # ensure output folder exists
 
     frame_index = 0
-    flow_list = []
+    flow_list = [] # stores optical flow arrays 
 
-    while True:
+    while True: # loops through all frames 
         ret, frame = cap.read()
         if not ret:
             break
 
-        curr = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        curr = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) #converts current frame to grayscale for conersion 
 
         # calculates dense optical flow between prev and current frames
         flow = cv2.calcOpticalFlowFarneback(
@@ -62,7 +62,7 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
         )
 
         mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
-        hsv[..., 0] = ang * 180 / np.pi / 2  # angle → hue
+        hsv[..., 0] = ang * 180 / np.pi / 2  # angle → color 
         hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)  # magnitude → brightness
         rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # convert to RGB image
 
@@ -71,9 +71,9 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
         flow_list.append(flow)
 
         prev = curr
-        frame_index += 1
+        frame_index += 1 # update to the prev frame to the next for iteration and increments frame index 
 
-    cap.release()
+    cap.release() # closes video file 
 
     # saves all raw flow arrays as a .npy file
     np.save(os.path.join(output_dir, "flow_raw.npy"), np.stack(flow_list))
