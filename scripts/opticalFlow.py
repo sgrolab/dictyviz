@@ -55,7 +55,7 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
         # calculates dense optical flow between prev and current frames
         flow = cv2.calcOpticalFlowFarneback(
             prev=prev, next=curr, flow=None,
-            pyr_scale=0.5, levels=3, winsize=15,
+            pyr_scale=0.5, levels=3, winsize=10,
             iterations=5, poly_n=7, poly_sigma=1.5, flags=0
         )
 
