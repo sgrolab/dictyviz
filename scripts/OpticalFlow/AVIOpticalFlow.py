@@ -55,7 +55,7 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
 
         rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
-        # Save RGB optical flow visualization frame as PNG
+        # save RGB optical flow visualization frame as PNG
         imageio.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), rgb_flow)
         flow_list.append(flow)
 
@@ -64,7 +64,7 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
 
     cap.release()
 
-    # Save raw flow data as .npy file
+    # save raw flow data as .npy file
     np.save(os.path.join(output_dir, "flow_raw.npy"), np.stack(flow_list))
 
     print(f"Saved {frame_index} flow frames and raw data to: {output_dir}", file=log_file)
@@ -80,9 +80,7 @@ def main():
     video_name = sanitize_filename(video_name)
 
     output_base = "/groups/sgro/sgrolab/Ankit/Data"
-    os.makedirs(output_base, exist_ok=True)
-
-    output_dir = os.path.join(output_base, f"optical_flow_output_{video_name}")
+    output_dir = os.path.join(output_base, "optical_flow_output")
     os.makedirs(output_dir, exist_ok=True)
 
     print(f"Output directory set to: {output_dir}")

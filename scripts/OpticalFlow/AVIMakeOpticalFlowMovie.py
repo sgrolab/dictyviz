@@ -1,18 +1,23 @@
-import sys
 import os
+import sys
 import cv2
+from tkinter import Tk, filedialog
 
-def make_movie_from_frames(output_dir, output_filename="optical_flow_movie.avi", fps=10):
-    # get list of all PNG frames in output_dir
+def make_movie(output_dir, output_filename="optical_flow_movie.avi", fps=10):
+    # gather flow frames sorted by filename
     frames = sorted([f for f in os.listdir(output_dir) if f.startswith("flow_") and f.endswith(".png")])
     
     if not frames:
         print(f"No flow PNG frames found in: {output_dir}")
         return
 
-    # read the first frame to get video dimensions
+    # read first frame to get video dimensions
     first_frame_path = os.path.join(output_dir, frames[0])
     frame = cv2.imread(first_frame_path)
+    if frame is None:
+        print(f"Error reading first frame: {first_frame_path}")
+        return
+
     height, width, _ = frame.shape
 
     # set up video writer
@@ -22,25 +27,23 @@ def make_movie_from_frames(output_dir, output_filename="optical_flow_movie.avi",
 
     for fname in frames:
         img = cv2.imread(os.path.join(output_dir, fname))
-        writer.write(img)
+        if img is not None:
+            writer.write(img)
+        else:
+            print(f"Warning: Skipping unreadable frame {fname}")
 
     writer.release()
     print(f"Movie saved to: {output_path}")
 
-def main(zarr_folder):
-    parent_dir = os.path.dirname(zarr_folder)
-    output_dir = os.path.join(parent_dir, "optical_flow_output")
+def main():
+    # hardcoded output directory 
+    output_dir = "/groups/sgro/sgrolab/Ankit/Data/optical_flow_output"
 
     if not os.path.isdir(output_dir):
-        print(f"Error: Output directory not found: {output_dir}")
+        print(f"Error: Hardcoded folder does not exist: {output_dir}")
         sys.exit(1)
 
-    make_movie_from_frames(output_dir)
+    make_movie(output_dir)
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python3 makeOpticalFlowMovie.py <zarr_folder>")
-        sys.exit(1)
-
-    zarr_folder = sys.argv[1]
-    main(zarr_folder)
+    main()

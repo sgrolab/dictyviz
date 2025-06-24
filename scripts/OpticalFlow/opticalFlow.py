@@ -7,7 +7,7 @@ import imageio
 from tkinter import Tk, filedialog
 
 # prompts user to select a nearby video file from the 'movies' folder relative to the zarr folder
-def find_video_near_zarr(zarr_folder):
+def find_movie(zarr_folder):
     parent = os.path.dirname(zarr_folder)
     movies_dir = os.path.join(parent, "movies")
 
@@ -83,7 +83,7 @@ def main(zarr_folder):
         print(f"Error: The provided path '{zarr_folder}' is not a valid directory.")
         sys.exit(1)
 
-    video_path = find_video_near_zarr(zarr_folder)
+    video_path = find_movie(zarr_folder)
     if not video_path:
         sys.exit(1)
 
