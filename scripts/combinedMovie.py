@@ -2,7 +2,7 @@ import os
 import subprocess
 from tkinter import Tk, filedialog
 
-def find_movie(zarr_folder):
+def find_movie(zarr_folder, root):
     parent = os.path.dirname(zarr_folder)
     movies_dir = os.path.join(parent, "movies")
 
@@ -11,8 +11,8 @@ def find_movie(zarr_folder):
         return None
 
     print(f"Please select a video file from: {movies_dir}")
-    Tk().withdraw()  # Hide the default tkinter window
     video_path = filedialog.askopenfilename(
+        parent=root,
         initialdir=movies_dir,
         title="Select a video file",
         filetypes=[("AVI files", "*.avi")]
@@ -24,7 +24,7 @@ def find_movie(zarr_folder):
 
     return video_path
 
-def find_opticalflow_movie(zarr_folder):
+def find_opticalflow_movie(zarr_folder, root):
     parent = os.path.dirname(zarr_folder)
     opticalFlow_dir = os.path.join(parent, "optical_flow_output")
 
@@ -33,8 +33,8 @@ def find_opticalflow_movie(zarr_folder):
         return None
 
     print(f"Please select a video file from: {opticalFlow_dir}")
-    Tk().withdraw()
     video_path = filedialog.askopenfilename(
+        parent=root,
         initialdir=opticalFlow_dir,
         title="Select a video file",
         filetypes=[("AVI files", "*.avi")]
@@ -67,17 +67,21 @@ def combine_movies(xy_movie, opticalflow_movie, output_path):
         return False
 
 if __name__ == "__main__":
-    # prompts user to select the zarr folder since everything else is relative to the zarr folder 
-    Tk().withdraw()
-    zarr_folder = filedialog.askdirectory(title="Select the .zarr folder")
+    root = Tk()
+    root.withdraw()
+
+    zarr_folder = filedialog.askdirectory(parent=root, title="Select the .zarr folder")
 
     if not zarr_folder:
         print("No folder selected.")
     else:
-        xy_movie = find_movie(zarr_folder)
-        opticalflow_movie = find_opticalflow_movie(zarr_folder)
+        xy_movie = find_movie(zarr_folder, root)
+        opticalflow_movie = find_opticalflow_movie(zarr_folder, root)
 
         if xy_movie and opticalflow_movie:
             movies_dir = os.path.join(os.path.dirname(zarr_folder), "movies")
             output_path = os.path.join(movies_dir, "combined_movie.avi")
             combine_movies(xy_movie, opticalflow_movie, output_path)
+
+    # close Tk instance after everything
+    root.destroy()
