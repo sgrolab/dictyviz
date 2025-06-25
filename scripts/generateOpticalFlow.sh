@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Prompt the user to select a max projection folder
-zarr_folder=$(zenity --file-selection --directory --title="Select a zarr or max projection folder" --filename="$(pwd)/")
+zarr_folder=$(zenity --file-selection --directory --title="Select a zarr folder" --filename="$(pwd)/")
 
 # Check if the user canceled the dialog
 if [ -z "$zarr_folder" ]; then

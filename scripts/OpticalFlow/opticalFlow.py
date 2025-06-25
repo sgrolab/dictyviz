@@ -84,8 +84,8 @@ def main():
         sys.exit(1)
 
     zarr_path = sys.argv[1]  # get the video path from command-line arguments
-    if not os.path.isfile(zarr_path):  # check if the video file exists
-        print(f"Error: File not found or invalid path: {zarr_path}")
+    if not os.path.exists(zarr_path):  # check if the path exists
+        print(f"Error: Path not found or invalid path: {zarr_path}")
         sys.exit(1)
     
     # use cropID if provided, otherwise empty string
