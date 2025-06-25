@@ -4,6 +4,7 @@ import datetime
 import numpy as np
 import cv2
 import imageio
+import re
 from tkinter import Tk, filedialog
 
 # prompts user to select a nearby video file from the 'movies' folder relative to the zarr folder
@@ -65,7 +66,7 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
         rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # convert to RGB image
 
         # saves RGB visualization of flow
-        imageio.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), rgb_flow)
+        imageio.v2.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), rgb_flow)
         flow_list.append(flow)
 
         prev = curr
@@ -77,7 +78,36 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
     np.save(os.path.join(output_dir, "flow_raw.npy"), np.stack(flow_list))
     print(f"Saved {frame_index} flow frames and raw data to: {output_dir}", file=log_file)
 
-# validates input, sets paths, and runs processing
+# get list of all PNG frames in output_dir and create AVI video
+def make_movie(output_dir, output_filename="optical_flow_movie.avi", fps=10):
+    frames = sorted([f for f in os.listdir(output_dir) if f.startswith("flow_") and f.endswith(".png")])
+    
+    if not frames:
+        print(f"No flow PNG frames found in: {output_dir}")
+        return
+
+    # read the first frame to get video dimensions
+    first_frame_path = os.path.join(output_dir, frames[0])
+    frame = cv2.imread(first_frame_path)
+    height, width, _ = frame.shape
+
+    # set up video writer
+    output_path = os.path.join(output_dir, output_filename)
+    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+    writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+    if not writer.isOpened():
+        print(f"Error: Failed to open video writer at {output_path}")
+        return
+
+    for fname in frames:
+        img = cv2.imread(os.path.join(output_dir, fname))
+        writer.write(img)
+
+    writer.release()
+    print(f"Movie saved to: {output_path}")
+
+
 def main(zarr_folder):
     if not os.path.isdir(zarr_folder):
         print(f"Error: The provided path '{zarr_folder}' is not a valid directory.")
@@ -91,15 +121,14 @@ def main(zarr_folder):
     print(f"[DEBUG] Parent directory: {parent_dir}")
 
     zarr_name = os.path.basename(zarr_folder).replace(".zarr", "")
-
-    output_dir = os.path.join(parent_dir, "optical_flow_output")
+    video_name = os.path.splitext(os.path.basename(video_path))[0]
+    
+    output_dir = os.path.join(parent_dir, f"optical_flow_output_{video_name}")
     print(f"[DEBUG] output directory: {output_dir}")
 
     log_path = os.path.join(output_dir, "opticalFlow_out.txt")
 
-    print(os.getcwd())
-
-    os.makedirs(output_dir, exist_ok=True)  # ensure output folder exists
+    os.makedirs(output_dir, exist_ok=True)
 
     # writes logs and run optical flow computation
     with open(log_path, 'w') as f:
@@ -111,10 +140,14 @@ def main(zarr_folder):
         compute_farneback_optical_flow(video_path, output_dir, f)
 
         print('Optical flow calculation completed at', datetime.datetime.now(), '\n', file=f)
-        
+        print('Now generating movie...', file=f)
+
+    make_movie(output_dir)
+
+# entry point that expects the zarr folder path as argument
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print("Usage: python3 opticalFlow.py <zarr_folder>")
+        print("Usage: python3 opticalFlow_full_pipeline.py <zarr_folder>")
         sys.exit(1)
 
     zarr_folder = sys.argv[1]

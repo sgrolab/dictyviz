@@ -1,15 +1,11 @@
 import os
 import sys
-import datetime
 import re
-import numpy as np
 import cv2
+import numpy as np
 import imageio
+import datetime
 from tkinter import Tk, filedialog
-
-def sanitize_filename(name):
-    # replaces anything not a-z, A-Z, 0-9, underscore, or dash with underscore
-    return re.sub(r'[^A-Za-z0-9_\-]', '_', name)
 
 def select_video_file():
     Tk().withdraw()
@@ -31,7 +27,7 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
 
     prev = cv2.cvtColor(first_frame, cv2.COLOR_BGR2GRAY)
     hsv = np.zeros_like(first_frame)
-    hsv[..., 1] = 255  # full saturation
+    hsv[..., 1] = 255
 
     frame_index = 0
     flow_list = []
@@ -54,21 +50,43 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
         hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
 
         rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-
-        # save RGB optical flow visualization frame as PNG
         imageio.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), rgb_flow)
-        flow_list.append(flow)
 
+        flow_list.append(flow)
         prev = curr
         frame_index += 1
 
     cap.release()
-
-    # save raw flow data as .npy file
     np.save(os.path.join(output_dir, "flow_raw.npy"), np.stack(flow_list))
-
     print(f"Saved {frame_index} flow frames and raw data to: {output_dir}", file=log_file)
 
+def make_movie(output_dir, output_filename="optical_flow_movie.avi", fps=10):
+    frames = sorted([f for f in os.listdir(output_dir) if f.startswith("flow_") and f.endswith(".png")])
+    
+    if not frames:
+        print(f"No flow PNG frames found in: {output_dir}")
+        return
+
+    first_frame_path = os.path.join(output_dir, frames[0])
+    frame = cv2.imread(first_frame_path)
+    if frame is None:
+        print(f"Error reading first frame: {first_frame_path}")
+        return
+
+    height, width, _ = frame.shape
+    output_path = os.path.join(output_dir, output_filename)
+    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+    writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+    for fname in frames:
+        img = cv2.imread(os.path.join(output_dir, fname))
+        if img is not None:
+            writer.write(img)
+        else:
+            print(f"Warning: Skipping unreadable frame {fname}")
+
+    writer.release()
+    print(f"Movie saved to: {output_path}")
 
 def main():
     video_path = select_video_file()
@@ -77,13 +95,8 @@ def main():
         sys.exit(1)
 
     video_name = os.path.splitext(os.path.basename(video_path))[0]
-    video_name = sanitize_filename(video_name)
-
-    output_base = "/groups/sgro/sgrolab/Ankit/Data"
-    output_dir = os.path.join(output_base, "optical_flow_output")
+    output_dir = os.path.join(os.path.dirname(video_path), f"optical_flow_output_{video_name}")
     os.makedirs(output_dir, exist_ok=True)
-
-    print(f"Output directory set to: {output_dir}")
 
     log_path = os.path.join(output_dir, "opticalFlow_out.txt")
 
@@ -95,7 +108,9 @@ def main():
         compute_farneback_optical_flow(video_path, output_dir, f)
 
         print("Optical flow calculation completed at", datetime.datetime.now(), "\n", file=f)
+        print("Now generating movie...", file=f)
 
+    make_movie(output_dir)
 
 if __name__ == "__main__":
     main()

@@ -26,10 +26,10 @@ def combine_movies(xy_movie, opticalflow_movie, output_path):
 
     try:
         subprocess.run(ffmpeg_command, check=True)
-        print(f"✅ Combined video saved to: {output_path}")
+        print(f"Combined video saved to: {output_path}")
         return True
     except subprocess.CalledProcessError as e:
-        print(f"❌ Error combining videos: {e}")
+        print(f"Error combining videos: {e}")
         return False
 
 if __name__ == "__main__":
