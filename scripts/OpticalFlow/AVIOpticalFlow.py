@@ -89,14 +89,20 @@ def make_movie(output_dir, output_filename="optical_flow_movie.avi", fps=10):
     print(f"Movie saved to: {output_path}")
 
 def main():
+
+    #hardcoded path if needed 
+    output_dir = "/groups/sgro/sgrolab/Ankit/Data/optical_flow_output"
+    os.makedirs(output_dir, exist_ok=True)
+
     video_path = select_video_file()
     if not video_path:
         print("No valid video selected, exiting.")
         sys.exit(1)
 
-    video_name = os.path.splitext(os.path.basename(video_path))[0]
-    output_dir = os.path.join(os.path.dirname(video_path), f"optical_flow_output_{video_name}")
-    os.makedirs(output_dir, exist_ok=True)
+
+    #video_name = os.path.splitext(os.path.basename(video_path))[0]
+    #output_dir = os.path.join(os.path.dirname(video_path), f"optical_flow_output_{video_name}")
+    #os.makedirs(output_dir, exist_ok=True)
 
     log_path = os.path.join(output_dir, "opticalFlow_out.txt")
 
