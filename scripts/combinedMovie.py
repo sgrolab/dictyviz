@@ -11,7 +11,7 @@ def get_video_dimensions(video_path):
     cap.release()
     return width, height
 
-def combine_movies_ffmpeg_resize_if_needed(xy_movie, opticalflow_movie, output_path):
+def combine_movies(xy_movie, opticalflow_movie, output_path):
     # gets dimensions of both videos
     xy_w, xy_h = get_video_dimensions(xy_movie)
     opt_w, opt_h = get_video_dimensions(opticalflow_movie)
@@ -41,9 +41,9 @@ def combine_movies_ffmpeg_resize_if_needed(xy_movie, opticalflow_movie, output_p
 
     try:
         subprocess.run(ffmpeg_command, check=True)
-        print(f"✅ Combined video saved to: {output_path}")
+        print(f"Combined video saved to: {output_path}")
     except subprocess.CalledProcessError as e:
-        print(f"❌ Error combining videos: {e}")
+        print(f"Error combining videos: {e}")
 
 if __name__ == "__main__":
     import argparse
