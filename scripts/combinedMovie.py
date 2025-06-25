@@ -1,16 +1,5 @@
 import os
 import subprocess
-from tkinter import Tk, filedialog
-
-def select_video(prompt):
-    video_path = filedialog.askopenfilename(
-        title=prompt,
-        filetypes=[("AVI files", "*.avi"), ("All files", "*.*")]
-    )
-    if not video_path or not os.path.isfile(video_path):
-        print(f"No valid video selected for: {prompt}")
-        return None
-    return video_path
 
 def combine_movies(xy_movie, opticalflow_movie, output_path):
     ffmpeg_command = [
@@ -33,17 +22,20 @@ def combine_movies(xy_movie, opticalflow_movie, output_path):
         return False
 
 if __name__ == "__main__":
-    root = Tk()
-    root.withdraw()
+    import argparse
 
-    print("Select the XY movie:")
-    xy_movie = select_video("Select XY movie")
-    print("Select the Optical Flow movie:")
-    opticalflow_movie = select_video("Select Optical Flow movie")
+    # parse command-line arguments
+    parser = argparse.ArgumentParser(description="Combine XY movie and Optical Flow movie into a single video.")
+    parser.add_argument("xy_movie", help="Path to the XY movie file.")
+    parser.add_argument("opticalflow_movie", help="Path to the Optical Flow movie file.")
+    args = parser.parse_args()
 
-    if xy_movie and opticalflow_movie:
-        output_dir = os.path.dirname(xy_movie)
-        output_path = os.path.join(output_dir, "combined_movie.avi")
-        combine_movies(xy_movie, opticalflow_movie, output_path)
+    # define output path
+    output_dir = os.path.dirname(args.xy_movie)
+    output_path = os.path.join(output_dir, "combined_movie.avi")
 
-    root.destroy()
+    # combine movies
+    if os.path.isfile(args.xy_movie) and os.path.isfile(args.opticalflow_movie):
+        combine_movies(args.xy_movie, args.opticalflow_movie, output_path)
+    else:
+        print("Error: One or both input files do not exist.")

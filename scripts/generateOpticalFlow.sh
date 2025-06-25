@@ -20,5 +20,5 @@ if [ -f "$flow_file" ] && [ -f "$movie_file" ]; then
     echo "Optical flow already computed at: $flow_raw_file"
 else
     echo "Submitting job to compute optical flow..."
-    bsub -n 8 -W 01:00 python3 OpticalFlow/newOpticalFlow.py "${avi_file}"
+    bsub -n 8 -W 01:00 python3 OpticalFlow/opticalFlow.py "${avi_file}"
 fi
