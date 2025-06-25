@@ -5,33 +5,32 @@ import cv2
 import numpy as np
 import imageio
 import datetime
+import zarr
 
 # function to compute farneback optical flow for a given video
-def compute_farneback_optical_flow(video_path, output_dir, log_file):
-    cap = cv2.VideoCapture(video_path)  # open the video file
-    ret, first_frame = cap.read()  # read the first frame
+def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
 
-    if not ret:  # check if the video was successfully read
-        print(f"Error: Could not read video from {video_path}", file=log_file)
-        return
+    parent_dir = os.path.dirname(zarr_path)
 
-    prev = cv2.cvtColor(first_frame, cv2.COLOR_BGR2GRAY)  # convert the first frame to grayscale
-    hsv = np.zeros_like(first_frame)  # initialize hsv image
+    maxProjectionsRoot = zarr.open(parent_dir + '/analysis/max_projections' + cropID, mode='r+')
+    maxZ = maxProjectionsRoot['maxZ']
+
+    num_frames, num_channels, height, width, = maxZ.shape 
+
+    hsv = np.zeros((height, width, 3), dtype=np.uint8)  # initialize hsv image
     hsv[..., 1] = 255  # set saturation to maximum
-
-    frame_index = 0  # initialize frame index
     flow_list = []  # list to store optical flow data
+    
+    prev_frame = maxZ[0,0,0,:,:]
+    prev_frame = prev_frame.astype(np.uint8)
 
-    while True:
-        ret, frame = cap.read()  # read the next frame
-        if not ret:  # break if no more frames
-            break
-
-        curr = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # convert current frame to grayscale
+    for frame_index in range (1, num_frames):
+        curr_frame = maxZ[frame_index, 0, 0, :, :]
+        curr_frame = curr_frame.astype(np.uint8)
 
         # compute optical flow using farneback method
         flow = cv2.calcOpticalFlowFarneback(
-            prev=prev, next=curr, flow=None,
+            prev=prev_frame, next=curr_frame, flow=None,
             pyr_scale=0.5, levels=3, winsize=10,
             iterations=5, poly_n=7, poly_sigma=1.5, flags=0
         )
@@ -44,10 +43,8 @@ def compute_farneback_optical_flow(video_path, output_dir, log_file):
         imageio.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), rgb_flow)  # save flow image
 
         flow_list.append(flow)  # append flow data to list
-        prev = curr  # update previous frame
-        frame_index += 1  # increment frame index
+        prev_frame = curr_frame  # update previous frame
 
-    cap.release()  # release video capture
     np.save(os.path.join(output_dir, "flow_raw.npy"), np.stack(flow_list))  # save raw flow data
     print(f"Saved {frame_index} flow frames and raw data to: {output_dir}", file=log_file)
 
@@ -83,25 +80,29 @@ def make_movie(output_dir, output_filename="optical_flow_movie.avi", fps=10):
 # main function to handle command-line arguments and execute the workflow
 def main():
     if len(sys.argv) < 2:  # check if the video path argument is provided
-        print("Usage: python AVIOpticalFlow.py <path_to_avi_file>")
+        print("Usage: python opticalFlow.py")
         sys.exit(1)
 
-    video_path = sys.argv[1]  # get the video path from command-line arguments
-    if not os.path.isfile(video_path):  # check if the video file exists
-        print(f"Error: File not found or invalid path: {video_path}")
+    zarr_path = sys.argv[1]  # get the video path from command-line arguments
+    if not os.path.isfile(zarr_path):  # check if the video file exists
+        print(f"Error: File not found or invalid path: {zarr_path}")
         sys.exit(1)
+    
+    # use cropID if provided, otherwise empty string
+    cropID = sys.argv[2] if len(sys.argv) > 2 else ""
 
-    output_dir = os.path.join(os.path.dirname(video_path), "optical_flow_output")  # set output directory
-    os.makedirs(output_dir, exist_ok=True)  # create output directory if it doesn't exist
-
+    output_dir = os.path.join(os.path.dirname(zarr_path), "optical_flow_output")
+    os.makedirs(output_dir, exist_ok=True)
+    
     log_path = os.path.join(output_dir, "opticalFlow_out.txt")  # set log file path
 
     with open(log_path, 'w') as f:  # open log file for writing
-        print("Video file:", video_path, file=f)  # log video file path
+        print("Zarr path:", zarr_path, file=f)  # log zarr file path
+        print("Crop ID:", cropID, file=f)  # log crop ID
         print("Output directory:", output_dir, file=f)  # log output directory
         print("Optical flow calculation started at", datetime.datetime.now(), "\n", file=f)  # log start time
 
-        compute_farneback_optical_flow(video_path, output_dir, f)  # compute optical flow
+        compute_farneback_optical_flow(zarr_path, cropID, output_dir, f)  # compute optical flow
 
         print("Optical flow calculation completed at", datetime.datetime.now(), "\n", file=f)  # log completion time
         print("Now generating movie...", file=f)  # log movie generation start
