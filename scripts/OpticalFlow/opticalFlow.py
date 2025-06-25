@@ -70,22 +70,6 @@ def make_movie(output_dir, output_filename="optical_flow_movie.avi", fps=10):
     fourcc = cv2.VideoWriter_fourcc(*'MJPG')  # set codec for the movie
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))  # initialize video writer
 
-    # create a key overlay
-    key_height = 100
-    key_width = 300
-    key = np.zeros((key_height, key_width, 3), dtype=np.uint8)
-    for i in range(key_width):
-        hue = (i / key_width) * 180  # map width to hue
-        key[:, i, 0] = hue  # set hue
-        key[:, i, 1] = 255  # set saturation
-        key[:, i, 2] = 255  # set value
-    key = cv2.cvtColor(key, cv2.COLOR_HSV2BGR)  # convert HSV to BGR
-
-    # add text to the key
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    cv2.putText(key, "Direction (Hue)", (10, 30), font, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
-    cv2.putText(key, "Magnitude (Brightness)", (10, 70), font, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
-
     for fname in frames:  # iterate through all flow images
         img = cv2.imread(os.path.join(output_dir, fname))  # read the image
         if img is not None:  # check if the image was successfully read
@@ -106,10 +90,6 @@ def main():
     if not os.path.isfile(video_path):  # check if the video file exists
         print(f"Error: File not found or invalid path: {video_path}")
         sys.exit(1)
-
-    #hardcoded path if needed 
-    #output_dir = "/groups/sgro/sgrolab/Ankit/Data/optical_flow_output"
-    #os.makedirs(output_dir, exist_ok=True)
 
     output_dir = os.path.join(os.path.dirname(video_path), "optical_flow_output")  # set output directory
     os.makedirs(output_dir, exist_ok=True)  # create output directory if it doesn't exist
