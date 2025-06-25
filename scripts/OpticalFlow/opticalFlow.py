@@ -11,11 +11,13 @@ import zarr
 def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
 
     parent_dir = os.path.dirname(zarr_path)
-
-    maxProjectionsRoot = zarr.open(parent_dir + '/analysis/max_projections_' + cropID, mode='r+')
+    maxProjectionsRoot = zarr.open(os.path.join(parent_dir, 'analysis', 'max_projections_' + cropID), mode='r+')   
+    
     maxZ = maxProjectionsRoot['maxz']
 
-    num_frames, num_channels, height, width, = maxZ.shape 
+    num_frames = maxZ.shape[0]
+    height = maxZ.shape[3]
+    width = maxZ.shape[4]
 
     hsv = np.zeros((height, width, 3), dtype=np.uint8)  # initialize hsv image
     hsv[..., 1] = 255  # set saturation to maximum
