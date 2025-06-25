@@ -63,7 +63,7 @@ def main(zarrFile=None, cropID=None):
 
         # create dask client
         try:
-            client = Client(threads_per_worker=9, n_workers=1)
+            client = Client(threads_per_worker=11, n_workers=1)
             print('\nDask client created at ', datetime.datetime.now(), file=f)
         except:
             print('\nDask client could not be created', file=f)
@@ -73,6 +73,8 @@ def main(zarrFile=None, cropID=None):
         try:
             wait([client.submit(dv.makeOrthoMaxVideoClean, maxProjectionsRoot, channels[0], primaryColormap),
                 client.submit(dv.makeOrthoMaxVideoClean, maxProjectionsRoot, channels[1], primaryColormap),
+                client.submit(dv.makeOrthoMaxVideo, maxProjectionsRoot, channels[0], primaryColormap),
+                client.submit(dv.makeOrthoMaxVideo, maxProjectionsRoot, channels[1], primaryColormap),
                 client.submit(dv.makeCompOrthoMaxVideo, maxProjectionsRoot, channels),
                 client.submit(dv.makeSlicedOrthoMaxVideos, slicedMaxProjectionsRoot, channels[0], 'x', primaryColormap),
                 client.submit(dv.makeSlicedOrthoMaxVideos, slicedMaxProjectionsRoot, channels[0], 'y', primaryColormap),

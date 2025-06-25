@@ -328,14 +328,15 @@ def makeOrthoMaxVideoClean(root, channel, cmap, ext='.avi'):
     scaleMin = channel.scaleMin
     gamma = channel.gamma
 
-    imagingFreq = getImagingFreqFromJSON(root.store.path + '/parameters.json')
+    imagingFreq = getImagingFreqFromJSON(root.store.path + '/../../parameters.json')
 
-    maxZ = root['analysis']['max_projections']['maxz']
+    maxZ = root['maxz']
     
     lenT, lenZ, lenY, lenX = getProjectionDimensions(root)
 
     movieWidth = lenX 
     movieHeight = lenY
+    print('Movie dimensions:', movieWidth, 'x', movieHeight)
 
     # calc scaleMin, scaleMax, and gamma if not provided
     if scaleMin == "None" or scaleMax == "None":
