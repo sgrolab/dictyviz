@@ -25,17 +25,30 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
     prev_frame = cv2.normalize(prev_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
     prev_frame = prev_frame.astype(np.uint8)
 
+    prev_flow = None
+
     for frame_index in range (1, num_frames):
         curr_frame_raw = maxZ[frame_index, 0, 0, :, :]
         curr_frame = cv2.normalize(curr_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
         curr_frame = curr_frame.astype(np.uint8)
 
+        #adds preprocessing blur to reduce noise
+        prev_frame = cv2.GaussianBlur(prev_frame, (5, 5), 0)
+        curr_frame = cv2.GaussianBlur(curr_frame, (5, 5), 0)
+
         # compute optical flow using farneback method
         flow = cv2.calcOpticalFlowFarneback(
             prev=prev_frame, next=curr_frame, flow=None,
-            pyr_scale=0.5, levels=7, winsize=10,
-            iterations=4, poly_n=5, poly_sigma=1.2, flags=0
+            pyr_scale=0.5, levels=7, winsize=15,
+            iterations=6, poly_n=5, poly_sigma=1.5, flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
         )
+
+        #adds temporal smoothing to help reduce flickering between frames
+        if prev_flow is not None:
+            alpha = 0.7  # weight for current flow (0.7 current + 0.3 previous)
+            flow = alpha * flow + (1 - alpha) * prev_flow
+        
+
 
         mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])  # calculate magnitude and angle
         hsv[..., 0] = ang * 180 / np.pi / 2  # set hue based on angle
@@ -46,6 +59,8 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
 
         flow_list.append(flow)  # append flow data to list
         prev_frame = curr_frame  # update previous frame
+
+        prev_flow = flow.copy() 
 
     np.save(os.path.join(output_dir, "flow_raw.npy"), np.stack(flow_list))  # save raw flow data
     print(f"Saved {frame_index} flow frames and raw data to: {output_dir}", file=log_file)
