@@ -13,8 +13,6 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
         parent_dir = os.path.dirname(zarr_path)
         max_proj_path = os.path.join(parent_dir, 'analysis', 'max_projections_' + cropID)
         
-        print(f"Opening zarr at: {max_proj_path}", file=log_file)
-        
         try:
             maxProjectionsRoot = zarr.open(max_proj_path, mode='r')
             # Try lowercase key first
@@ -36,7 +34,7 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
         print(f"Processing {num_frames} frames of size {width}x{height}", file=log_file)
 
         hsv = np.zeros((height, width, 3), dtype=np.uint8)
-        hsv[..., 1] = 255  # Set saturation to maximum
+        hsv[..., 1] = 255  # set saturation to maximum
         flow_list = []
         
         # Enhanced pre-processing for first frame
@@ -62,7 +60,7 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
                 flow=None,
                 pyr_scale=0.5,     # Pyramid scale
                 levels=5,          # Pyramid levels - increased for better multi-scale analysis
-                winsize=15,        # Window size - increased for more stable flow
+                winsize=25,        # Window size - increased for more stable flow
                 iterations=3,      # Iterations at each pyramid level
                 poly_n=5,          # Polynomial expansion neighborhood size
                 poly_sigma=1.2,    # Gaussian std for polynomial expansion
