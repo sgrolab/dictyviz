@@ -20,10 +20,19 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
     hsv = np.zeros((height, width, 3), dtype=np.uint8)  # initialize hsv image
     hsv[..., 1] = 255  # set saturation to maximum
     flow_list = []  # list to store optical flow data
+
+    def enhance_cell_contrast(frame):
+        # CLAHE (Contrast Limited Adaptive Histogram Equalization) enhances local contrast
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        return clahe.apply(frame)
     
     prev_frame_raw = maxZ[0,0,0,:,:]
     prev_frame = cv2.normalize(prev_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
     prev_frame = prev_frame.astype(np.uint8)
+    prev_frame = enhance_cell_contrast(prev_frame)
+
+    prev_frame = cv2.bilateralFilter(prev_frame, d=5, sigmaColor=35, sigmaSpace=5)
+
 
     prev_flow = None
 
@@ -31,16 +40,15 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
         curr_frame_raw = maxZ[frame_index, 0, 0, :, :]
         curr_frame = cv2.normalize(curr_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
         curr_frame = curr_frame.astype(np.uint8)
+        curr_frame = enhance_cell_contrast(curr_frame)
 
-        #adds preprocessing blur to reduce noise
-        prev_frame = cv2.GaussianBlur(prev_frame, (5, 5), 0)
-        curr_frame = cv2.GaussianBlur(curr_frame, (5, 5), 0)
+        curr_frame = cv2.bilateralFilter(curr_frame, d=5, sigmaColor=35, sigmaSpace=5)
 
         # compute optical flow using farneback method
         flow = cv2.calcOpticalFlowFarneback(
             prev=prev_frame, next=curr_frame, flow=None,
-            pyr_scale=0.5, levels=7, winsize=15,
-            iterations=6, poly_n=5, poly_sigma=1.5, flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
+            pyr_scale=0.5, levels=8, winsize=9,
+            iterations=7, poly_n=5, poly_sigma=1.1, flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
         )
 
         # adds temporal smoothing to help reduce flickering between frames
