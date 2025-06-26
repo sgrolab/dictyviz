@@ -9,7 +9,7 @@ import zarr
 # function to compute farneback optical flow
 def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
     parent_dir = os.path.dirname(zarr_path)
-    maxProjectionsRoot = zarr.open(os.path.join(parent_dir, 'analysis', 'max_projections' + cropID), mode='r+')   
+    maxProjectionsRoot = zarr.open(os.path.join(parent_dir, 'analysis', 'max_projections_' + cropID), mode='r+')   
     
     maxZ = maxProjectionsRoot['maxz']
 
