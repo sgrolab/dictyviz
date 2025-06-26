@@ -43,13 +43,36 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
             iterations=6, poly_n=5, poly_sigma=1.5, flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
         )
 
-        #adds temporal smoothing to help reduce flickering between frames
+        # adds temporal smoothing to help reduce flickering between frames
         if prev_flow is not None:
             alpha = 0.7  # weight for current flow (0.7 current + 0.3 previous)
             flow = alpha * flow + (1 - alpha) * prev_flow
+
+        # apply targeted filtering for problem areas
+        flow_magnitude = np.sqrt(flow[..., 0]**2 + flow[..., 1]**2)
+        questionable_flow = flow_magnitude > np.percentile(flow_magnitude, 95)  # Top 5% strongest flows
+
+        # apply spatial median filtering only to areas with very strong flow
+        # this helps correct outlier directions in cells with problematic motion
+        if np.any(questionable_flow):
+            flow_x_fixed = flow[..., 0].copy()
+            flow_y_fixed = flow[..., 1].copy()
+
+            # create a dilated mask to include surrounding areas
+            kernel = np.ones((5, 5), np.uint8)
+            expanded_mask = cv2.dilate(questionable_flow.astype(np.uint8), kernel)
+            
+            # apply median filter only to those areas
+            flow_x_median = cv2.medianBlur((flow[..., 0] * expanded_mask).astype(np.float32), 5)
+            flow_y_median = cv2.medianBlur((flow[..., 1] * expanded_mask).astype(np.float32), 5)
+            
+            # replace values in the expanded mask area
+            flow_x_fixed[expanded_mask > 0] = flow_x_median[expanded_mask > 0]
+            flow_y_fixed[expanded_mask > 0] = flow_y_median[expanded_mask > 0]
+            
+            # reconstruct flow
+            flow = np.dstack((flow_x_fixed, flow_y_fixed))
         
-
-
         mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])  # calculate magnitude and angle
         hsv[..., 0] = ang * 180 / np.pi / 2  # set hue based on angle
         hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)  # normalize magnitude

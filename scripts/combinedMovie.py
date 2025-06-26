@@ -16,7 +16,7 @@ def combine_movies(xy_movie, opticalflow_movie, output_path):
     xy_w, xy_h = get_video_dimensions(xy_movie)
     opt_w, opt_h = get_video_dimensions(opticalflow_movie)
 
-    # build FFmpeg filter to equalize heights
+    # build FFmpeg filter to equalize heights since videos will be stacked horizontally (so only heights matter)
     if xy_h != opt_h:
         if xy_h < opt_h:
             # Resize opticalflow_movie down to xy_movie height
