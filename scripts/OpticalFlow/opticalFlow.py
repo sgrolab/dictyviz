@@ -9,46 +9,148 @@ import zarr
 
 # function to compute farneback optical flow for a given video
 def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
+    try:
+        parent_dir = os.path.dirname(zarr_path)
+        max_proj_path = os.path.join(parent_dir, 'analysis', 'max_projections_' + cropID)
+        
+        print(f"Opening zarr at: {max_proj_path}", file=log_file)
+        
+        try:
+            maxProjectionsRoot = zarr.open(max_proj_path, mode='r')
+            # Try lowercase key first
+            try:
+                maxZ = maxProjectionsRoot['maxz']
+            except KeyError:
+                # Try uppercase key next
+                maxZ = maxProjectionsRoot['maxZ']
+        except Exception as e:
+            print(f"Error opening zarr: {str(e)}", file=log_file)
+            raise
+            
+        print(f"Dataset shape: {maxZ.shape}", file=log_file)
+        
+        num_frames = maxZ.shape[0]
+        height = maxZ.shape[3]
+        width = maxZ.shape[4]
+        
+        print(f"Processing {num_frames} frames of size {width}x{height}", file=log_file)
 
-    parent_dir = os.path.dirname(zarr_path)
-    maxProjectionsRoot = zarr.open(os.path.join(parent_dir, 'analysis', 'max_projections_' + cropID), mode='r+')   
-    
-    maxZ = maxProjectionsRoot['maxz']
+        hsv = np.zeros((height, width, 3), dtype=np.uint8)
+        hsv[..., 1] = 255  # Set saturation to maximum
+        flow_list = []
+        
+        # Enhanced pre-processing for first frame
+        prev_frame_raw = maxZ[0, 0, 0, :, :]
+        # Normalize to full 8-bit range for better contrast
+        prev_frame = cv2.normalize(prev_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
+        prev_frame = prev_frame.astype(np.uint8)
+        
+        # Apply Gaussian blur to reduce noise (optional)
+        prev_frame = cv2.GaussianBlur(prev_frame, (5, 5), 0)
 
-    num_frames = maxZ.shape[0]
-    height = maxZ.shape[3]
-    width = maxZ.shape[4]
+        for frame_index in range(1, num_frames):
+            # Enhanced pre-processing for current frame
+            curr_frame_raw = maxZ[frame_index, 0, 0, :, :]
+            curr_frame = cv2.normalize(curr_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
+            curr_frame = curr_frame.astype(np.uint8)
+            curr_frame = cv2.GaussianBlur(curr_frame, (5, 5), 0)
+            
+            # Improved Farneback parameters for biological data
+            flow = cv2.calcOpticalFlowFarneback(
+                prev=prev_frame, 
+                next=curr_frame, 
+                flow=None,
+                pyr_scale=0.5,     # Pyramid scale
+                levels=5,          # Pyramid levels - increased for better multi-scale analysis
+                winsize=15,        # Window size - increased for more stable flow
+                iterations=3,      # Iterations at each pyramid level
+                poly_n=5,          # Polynomial expansion neighborhood size
+                poly_sigma=1.2,    # Gaussian std for polynomial expansion
+                flags=0
+            )
 
-    hsv = np.zeros((height, width, 3), dtype=np.uint8)  # initialize hsv image
-    hsv[..., 1] = 255  # set saturation to maximum
-    flow_list = []  # list to store optical flow data
-    
-    prev_frame = maxZ[0,0,0,:,:]
-    prev_frame = prev_frame.astype(np.uint8)
+            # Calculate flow magnitude and angle
+            mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+            
+            # Apply scaling to improve visualization
+            max_mag = np.max(mag)
+            print(f"Frame {frame_index}: Max flow magnitude = {max_mag:.2f}", file=log_file)
+            
+            # Set hue based on angle
+            hsv[..., 0] = ang * 180 / np.pi / 2
+            
+            # Adaptive scaling of magnitude for visualization
+            if max_mag > 0:
+                # Improve visibility with non-linear scaling
+                scaled_mag = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+                # Apply gamma correction to enhance subtle movements
+                gamma = 0.7
+                scaled_mag = np.power(scaled_mag / 255, gamma) * 255
+                hsv[..., 2] = scaled_mag.astype(np.uint8)
+            else:
+                hsv[..., 2] = 0  # No movement detected
+            
+            # Convert HSV to RGB for visualization
+            rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+            
+            # Add key/legend to explain the visualization
+            if frame_index == 1:
+                # Create a key showing the color wheel
+                key_size = 100
+                key = np.zeros((key_size, key_size, 3), dtype=np.uint8)
+                key[..., 1] = 255  # Full saturation
+                key[..., 2] = 255  # Full value
+                
+                # Create color wheel
+                y, x = np.ogrid[:key_size, :key_size]
+                center = key_size // 2
+                radius = center - 10
+                dist = np.sqrt((x - center)**2 + (y - center)**2)
+                mask = dist <= radius
+                
+                # Set hue based on angle
+                ang_key = np.arctan2(y - center, x - center) + np.pi
+                key[..., 0][mask] = ang_key[mask] * 180 / np.pi / 2
+                
+                # Convert to BGR
+                key_bgr = cv2.cvtColor(key, cv2.COLOR_HSV2BGR)
+                
+                # Overlay key at bottom-right corner
+                key_y_offset = rgb_flow.shape[0] - key_size - 10
+                key_x_offset = rgb_flow.shape[1] - key_size - 10
+                
+                # Add the key to the first frame and save separately
+                key_frame = rgb_flow.copy()
+                key_frame[key_y_offset:key_y_offset+key_size, key_x_offset:key_x_offset+key_size] = key_bgr
+                
+                # Add text labels
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                cv2.putText(key_frame, "Direction", (key_x_offset-70, key_y_offset+key_size//2), 
+                            font, 0.5, (255, 255, 255), 1)
+                cv2.putText(key_frame, "Speed", (key_x_offset+key_size//2-20, key_y_offset-10), 
+                            font, 0.5, (255, 255, 255), 1)
+                
+                # Save the keyed first frame
+                imageio.imwrite(os.path.join(output_dir, "flow_key.png"), key_frame)
+            
+            # Save the frame
+            imageio.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), rgb_flow)
+            
+            # Save flow data
+            flow_list.append(flow)
+            
+            # Update previous frame
+            prev_frame = curr_frame
 
-    for frame_index in range (1, num_frames):
-        curr_frame = maxZ[frame_index, 0, 0, :, :]
-        curr_frame = curr_frame.astype(np.uint8)
-
-        # compute optical flow using farneback method
-        flow = cv2.calcOpticalFlowFarneback(
-            prev=prev_frame, next=curr_frame, flow=None,
-            pyr_scale=0.5, levels=3, winsize=10,
-            iterations=5, poly_n=7, poly_sigma=1.5, flags=0
-        )
-
-        mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])  # calculate magnitude and angle
-        hsv[..., 0] = ang * 180 / np.pi / 2  # set hue based on angle
-        hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)  # normalize magnitude
-
-        rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # convert hsv to rgb
-        imageio.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), rgb_flow)  # save flow image
-
-        flow_list.append(flow)  # append flow data to list
-        prev_frame = curr_frame  # update previous frame
-
-    np.save(os.path.join(output_dir, "flow_raw.npy"), np.stack(flow_list))  # save raw flow data
-    print(f"Saved {frame_index} flow frames and raw data to: {output_dir}", file=log_file)
+        # Save raw flow data
+        np.save(os.path.join(output_dir, "flow_raw.npy"), np.stack(flow_list))
+        print(f"Saved {len(flow_list)} flow frames and raw data to: {output_dir}", file=log_file)
+        
+    except Exception as e:
+        print(f"Error in optical flow computation: {str(e)}", file=log_file)
+        import traceback
+        traceback.print_exc(file=log_file)
+        raise
 
 # function to create a movie from optical flow images
 def make_movie(output_dir, output_filename="optical_flow_movie.avi", fps=10):
