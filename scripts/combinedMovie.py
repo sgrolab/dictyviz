@@ -34,8 +34,9 @@ def combine_movies(xy_movie, opticalflow_movie, output_path):
         "-i", opticalflow_movie,
         "-filter_complex", filter_str,
         "-c:v", "libx264",
-        "-crf", "23",
-        "-preset", "medium",
+        "-crf", "20",
+        "-preset", "slow",
+        "-tune", "film",
         output_path
     ]
 
