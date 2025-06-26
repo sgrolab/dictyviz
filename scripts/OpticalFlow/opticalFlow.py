@@ -21,11 +21,13 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
     hsv[..., 1] = 255  # set saturation to maximum
     flow_list = []  # list to store optical flow data
     
-    prev_frame = maxZ[0,0,0,:,:]
+    prev_frame_raw = maxZ[0,0,0,:,:]
+    prev_frame = cv2.normalize(prev_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
     prev_frame = prev_frame.astype(np.uint8)
 
     for frame_index in range (1, num_frames):
-        curr_frame = maxZ[frame_index, 0, 0, :, :]
+        curr_frame_raw = maxZ[frame_index, 0, 0, :, :]
+        curr_frame = cv2.normalize(curr_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
         curr_frame = curr_frame.astype(np.uint8)
 
         # compute optical flow using farneback method
@@ -39,7 +41,7 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
         hsv[..., 0] = ang * 180 / np.pi / 2  # set hue based on angle
         hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)  # normalize magnitude
 
-        rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # convert hsv to rgb
+        rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # convert hsv to bgr
         imageio.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), rgb_flow)  # save flow image
 
         flow_list.append(flow)  # append flow data to list
