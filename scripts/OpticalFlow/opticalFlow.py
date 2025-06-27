@@ -8,8 +8,24 @@ import zarr
 
 # function to compute farneback optical flow
 def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
+    
     parent_dir = os.path.dirname(zarr_path)
-    maxProjectionsRoot = zarr.open(os.path.join(parent_dir, 'analysis', 'max_projections_' + cropID), mode='r+')   
+
+    # with underscore 
+    path_with_underscore = os.path.join(parent_dir, 'analysis', 'max_projections_' + cropID)
+    # without underscore
+    path_without_underscore = os.path.join(parent_dir, 'analysis', 'max_projections' + cropID)
+    
+    # check which path exists
+    if os.path.exists(path_with_underscore):
+        max_proj_path = path_with_underscore
+    elif os.path.exists(path_without_underscore):
+        max_proj_path = path_without_underscore
+    else:
+        print(f"Error: Neither {path_with_underscore} nor {path_without_underscore} exists", file=log_file)
+        return False
+        
+    maxProjectionsRoot = zarr.open(max_proj_path, mode='r+') 
     
     maxZ = maxProjectionsRoot['maxz']
 
