@@ -33,7 +33,6 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
 
     prev_frame = cv2.bilateralFilter(prev_frame, d=5, sigmaColor=35, sigmaSpace=5)
 
-
     prev_flow = None
 
     for frame_index in range (1, num_frames):
@@ -44,12 +43,25 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
 
         curr_frame = cv2.bilateralFilter(curr_frame, d=5, sigmaColor=35, sigmaSpace=5)
 
-        # compute optical flow using farneback method
-        flow = cv2.calcOpticalFlowFarneback(
-            prev=prev_frame, next=curr_frame, flow=None,
-            pyr_scale=0.5, levels=8, winsize=9,
-            iterations=7, poly_n=5, poly_sigma=1.1, flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
-        )
+        if frame_index > num_frames * 0.6:  # in the last 40% of frames
+            # use parameters optimized for larger movements
+            flow = cv2.calcOpticalFlowFarneback(
+                prev=prev_frame, next=curr_frame, flow=None,
+                pyr_scale=0.5, levels=7,      # Fewer levels to focus on larger structures
+                winsize=15,                   # Larger window for capturing group movements
+                iterations=10,                # More iterations for accuracy
+                poly_n=7,                     # Larger neighborhood for group behavior
+                poly_sigma=1.5,               # Higher sigma for smoother group flow
+                flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
+            )
+        else:
+            # standard parameters for early frames
+            flow = cv2.calcOpticalFlowFarneback(
+                prev=prev_frame, next=curr_frame, flow=None,
+                pyr_scale=0.5, levels=10, winsize=7,
+                iterations=8, poly_n=5, poly_sigma=1.1, 
+                flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
+            )
 
         # adds temporal smoothing to help reduce flickering between frames
         if prev_flow is not None:

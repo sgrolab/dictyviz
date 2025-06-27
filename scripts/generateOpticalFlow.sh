@@ -31,3 +31,4 @@ else
         bsub -n 8 -W 05:00 python3 OpticalFlow/opticalFlow.py "${zarr_folder}" "${cropID}"
     fi
 fi 
+
