@@ -39,7 +39,7 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
 
     def enhance_cell_contrast(frame):
         # CLAHE (Contrast Limited Adaptive Histogram Equalization) enhances local contrast
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
         return clahe.apply(frame)
     
     prev_frame_raw = maxZ[0,0,0,:,:]
@@ -128,7 +128,7 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
         final_frame = rgb_flow.copy()
         final_frame[pos_y:pos_y+legend_h, pos_x:pos_x+legend_w] = legend
 
-        imageio.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), rgb_flow)  # save flow image
+        imageio.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), final_frame)  # save flow image
 
         flow_list.append(flow)  # append flow data to list
         prev_frame = curr_frame  # update previous frame
@@ -205,92 +205,66 @@ def main():
     make_movie(output_dir)
 
 
-# Add this function after your existing functions
-
 def create_flow_legend(width, height):
-    legend_width = int(width * 0.25)  # 25% of frame width
-    legend_height = int(height * 0.25)  # 25% of frame height
 
-    # create the legend image with transparent background
-    legend = np.zeros((legend_height, legend_width, 4), dtype=np.uint8)
+    legend_width = int(width * 0.25)
+    legend_height = int(height * 0.22)
+    min_size = 120
+    legend_width = max(legend_width, min_size)
+    legend_height = max(legend_height, min_size)
     
-    # create circular color wheel for direction
-    center_x = legend_width // 3
-    center_y = legend_height // 2
-    radius = min(center_x, center_y) - 10
+    # create base image with black background
+    legend = np.zeros((legend_height, legend_width, 3), dtype=np.uint8) + 20  # Dark gray background
     
-    # draw direction color wheel
-    for y in range(legend_height):
-        for x in range(center_x * 2):
-            # calc distance from center
-            dx = x - center_x
-            dy = y - center_y
-            distance = np.sqrt(dx*dx + dy*dy)
-            
-            if distance < radius:
-                # Calculate angle and map to hue
-                angle = np.arctan2(dy, dx)
-                hue = ((angle + np.pi) / (2 * np.pi)) * 180
-                
-                # Create HSV color and convert to RGBA
-                color = np.zeros((1, 1, 3), dtype=np.uint8)
-                color[0, 0, 0] = hue
-                color[0, 0, 1] = 255
-                color[0, 0, 2] = 255
-                bgr_color = cv2.cvtColor(color, cv2.COLOR_HSV2BGR)[0, 0]
-                
-                # Set pixel color and alpha
-                legend[y, x, 0:3] = bgr_color
-                legend[y, x, 3] = 255  # Fully opaque
+    # add border
+    cv2.rectangle(legend, (0, 0), (legend_width-1, legend_height-1), (200, 200, 200), 1)
     
-    # Create magnitude gradient (brightness)
-    bar_width = legend_width // 3
-    for y in range(legend_height):
-        brightness = int((1 - y / legend_height) * 255)  # Top is brightest
-        for x in range(center_x * 2, center_x * 2 + bar_width):
-            legend[y, x, 0:3] = [brightness, brightness, brightness]  # Grayscale
-            legend[y, x, 3] = 255  # Fully opaque
-    
-    # Add labels
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = legend_width / 300  # Scale font based on legend size
-    
-    # Direction label
-    cv2.putText(legend, "Direction", (center_x-radius//2, legend_height-10), 
-                font, font_scale, (255, 255, 255), 1, cv2.LINE_AA)
-    
-    # Add direction arrows with labels
-    arrow_length = radius // 2
+    # define the correct color wheel mapping
     directions = [
-        (0, "→", (center_x+arrow_length, center_y)),
-        (np.pi/2, "↓", (center_x, center_y+arrow_length)),
-        (np.pi, "←", (center_x-arrow_length, center_y)),
-        (3*np.pi/2, "↑", (center_x, center_y-arrow_length))
+        ("→ Right", 0, (255, 0, 0)),       # Red
+        ("↘ Down-Right", 45, (255, 128, 0)),  # Orange-Yellow
+        ("↓ Down", 90, (255, 255, 0)),     # Yellow-Green
+        ("↙ Down-Left", 135, (0, 255, 128)),  # Green-Cyan
+        ("← Left", 180, (0, 255, 255)),    # Cyan
+        ("↖ Up-Left", 225, (0, 128, 255)),    # Blue-Cyan
+        ("↑ Up", 270, (0, 0, 255)),        # Blue
+        ("↗ Up-Right", 315, (255, 0, 255)),   # Violet-Pink
     ]
     
-    for angle, symbol, (end_x, end_y) in directions:
-        dx = int(arrow_length * np.cos(angle))
-        dy = int(arrow_length * np.sin(angle))
-        cv2.putText(legend, symbol, (end_x-5, end_y+5), font, font_scale*1.5, 
-                    (255, 255, 255), 1, cv2.LINE_AA)
-   
-    # Magnitude label
-    cv2.putText(legend, "Speed", (center_x*2 + 5, 20), 
-                font, font_scale, (255, 255, 255), 1, cv2.LINE_AA)
-    cv2.putText(legend, "Fast", (center_x*2 + 5, 40), 
-                font, font_scale, (255, 255, 255), 1, cv2.LINE_AA)
-    cv2.putText(legend, "Slow", (center_x*2 + 5, legend_height-20), 
-                font, font_scale, (255, 255, 255), 1, cv2.LINE_AA)
+    # draw color legend entries
+    y_start = 40
+    y_step = (legend_height - y_start - 10) // len(directions)
     
-    # Add semi-transparent background
-    bg = np.zeros((legend_height, legend_width, 3), dtype=np.uint8)
-    alpha_bg = np.zeros((legend_height, legend_width), dtype=np.uint8) + 180
+    for i, (label, _, color) in enumerate(directions):
+        y = y_start + i * y_step
+        # color box
+        cv2.rectangle(legend, (10, y-10), (30, y+10), color, -1)
+        cv2.rectangle(legend, (10, y-10), (30, y+10), (200, 200, 200), 1)
+        # Label
+        cv2.putText(legend, label, (40, y+5), font, title_scale * 0.9, (255, 255, 255), 1, cv2.LINE_AA)
     
-    # Convert to BGR for OpenCV compatibility, with proper alpha blending
-    result_bgr = legend[:, :, 0:3].copy()
+    # add speed legend on right side
+    speed_width = 20
+    speed_x = legend_width - 40
+    speed_y1 = y_start
+    speed_y2 = legend_height - 30
+    speed_height = speed_y2 - speed_y1
     
-    return result_bgr
-
+    # create gradient
+    for y in range(speed_height):
+        brightness = int(255 * (1 - y / speed_height))
+        y_pos = speed_y1 + y
+        cv2.rectangle(legend, (speed_x, y_pos), (speed_x + speed_width, y_pos + 1), (brightness, brightness, brightness), -1)
+    
+    # add border around speed legend
+    cv2.rectangle(legend, (speed_x, speed_y1), (speed_x + speed_width, speed_y2), (200, 200, 200), 1)
+    
+    # add speed labels
+    cv2.putText(legend, "Speed", (speed_x - 8, speed_y1 - 10), font, title_scale * 0.9, (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.putText(legend, "Fast", (speed_x + speed_width + 5, speed_y1 + 5), font, title_scale * 0.8, (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.putText(legend, "Slow", (speed_x + speed_width + 5, speed_y2), font, title_scale * 0.8, (255, 255, 255), 1, cv2.LINE_AA)
+    
+    return legend
 
 # entry point
 if __name__ == "__main__":
