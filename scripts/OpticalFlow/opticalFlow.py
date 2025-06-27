@@ -197,14 +197,14 @@ def create_flow_legend(width, height):
     
     # define the correct color wheel mapping
     directions = [
-        ("→ Right", 0, (255, 0, 0)),       # Red
-        ("↘ Down-Right", 45, (255, 128, 0)),  # Orange-Yellow
-        ("↓ Down", 90, (255, 255, 0)),     # Yellow-Green
-        ("↙ Down-Left", 135, (0, 255, 128)),  # Green-Cyan
-        ("← Left", 180, (0, 255, 255)),    # Cyan
-        ("↖ Up-Left", 225, (0, 128, 255)),    # Blue-Cyan
-        ("↑ Up", 270, (0, 0, 255)),        # Blue
-        ("↗ Up-Right", 315, (255, 0, 255)),   # Violet-Pink
+        ("Right", 0, (255, 0, 0)),       # Red
+        ("Down-Right", 45, (255, 128, 0)),  # Orange-Yellow
+        ("Down", 90, (255, 255, 0)),     # Yellow-Green
+        ("Down-Left", 135, (0, 255, 128)),  # Green-Cyan
+        ("Left", 180, (0, 255, 255)),    # Cyan
+        ("Up-Left", 225, (0, 128, 255)),    # Blue-Cyan
+        ("Up", 270, (0, 0, 255)),        # Blue
+        ("Up-Right", 315, (255, 0, 255)),   # Violet-Pink
     ]
     
     # draw color legend entries
