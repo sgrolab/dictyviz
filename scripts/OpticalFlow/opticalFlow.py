@@ -6,6 +6,11 @@ import imageio
 import datetime
 import zarr
 
+def enhance_cell_contrast(frame):
+        # CLAHE (Contrast Limited Adaptive Histogram Equalization) enhances local contrast
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+        return clahe.apply(frame)
+
 # function to compute farneback optical flow
 def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
     
@@ -36,11 +41,6 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
     hsv = np.zeros((height, width, 3), dtype=np.uint8)  # initialize hsv image
     hsv[..., 1] = 255  # set saturation to maximum
     flow_list = []  # list to store optical flow data
-
-    def enhance_cell_contrast(frame):
-        # CLAHE (Contrast Limited Adaptive Histogram Equalization) enhances local contrast
-        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-        return clahe.apply(frame)
     
     prev_frame_raw = maxZ[0,0,0,:,:]
     prev_frame = cv2.normalize(prev_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
@@ -173,38 +173,6 @@ def make_movie(output_dir, output_filename="optical_flow_movie.mp4", fps=10):
     writer.release()
     print(f"movie saved to: {output_path}")
 
-# main function
-def main():
-    if len(sys.argv) < 2:
-        print("usage: python opticalFlow.py <path_to_zarr> [cropID]")
-        sys.exit(1)
-
-    zarr_path = sys.argv[1]
-    if not os.path.exists(zarr_path):
-        print(f"error: path not found: {zarr_path}")
-        sys.exit(1)
-    
-    cropID = sys.argv[2] if len(sys.argv) > 2 else ""
-
-    output_dir = os.path.join(os.path.dirname(zarr_path), "optical_flow_output")
-    os.makedirs(output_dir, exist_ok=True)
-    
-    log_path = os.path.join(output_dir, "opticalFlow_out.txt")
-
-    with open(log_path, 'w') as f:
-        print("zarr path:", zarr_path, file=f)
-        print("crop id:", cropID, file=f)
-        print("output directory:", output_dir, file=f)
-        print("optical flow calculation started at", datetime.datetime.now(), "\n", file=f)
-
-        compute_farneback_optical_flow(zarr_path, cropID, output_dir, f)
-
-        print("optical flow calculation completed at", datetime.datetime.now(), "\n", file=f)
-        print("generating movie...", file=f)
-
-    make_movie(output_dir)
-
-
 def create_flow_legend(width, height):
 
     legend_width = int(width * 0.25)
@@ -212,12 +180,20 @@ def create_flow_legend(width, height):
     min_size = 120
     legend_width = max(legend_width, min_size)
     legend_height = max(legend_height, min_size)
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    title_scale = legend_height / 400 
     
     # create base image with black background
-    legend = np.zeros((legend_height, legend_width, 3), dtype=np.uint8) + 20  # Dark gray background
+    legend = np.zeros((legend_height, legend_width, 3), dtype=np.uint8) + 20  
     
     # add border
     cv2.rectangle(legend, (0, 0), (legend_width-1, legend_height-1), (200, 200, 200), 1)
+
+
+    # adds the title 
+    cv2.putText(legend, "Optical Flow", (10, 20), font, title_scale, (255, 255, 255), 1, cv2.LINE_AA)
+
     
     # define the correct color wheel mapping
     directions = [
@@ -265,6 +241,37 @@ def create_flow_legend(width, height):
     cv2.putText(legend, "Slow", (speed_x + speed_width + 5, speed_y2), font, title_scale * 0.8, (255, 255, 255), 1, cv2.LINE_AA)
     
     return legend
+
+# main function
+def main():
+    if len(sys.argv) < 2:
+        print("usage: python opticalFlow.py <path_to_zarr> [cropID]")
+        sys.exit(1)
+
+    zarr_path = sys.argv[1]
+    if not os.path.exists(zarr_path):
+        print(f"error: path not found: {zarr_path}")
+        sys.exit(1)
+    
+    cropID = sys.argv[2] if len(sys.argv) > 2 else ""
+
+    output_dir = os.path.join(os.path.dirname(zarr_path), "optical_flow_output")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    log_path = os.path.join(output_dir, "opticalFlow_out.txt")
+
+    with open(log_path, 'w') as f:
+        print("zarr path:", zarr_path, file=f)
+        print("crop id:", cropID, file=f)
+        print("output directory:", output_dir, file=f)
+        print("optical flow calculation started at", datetime.datetime.now(), "\n", file=f)
+
+        compute_farneback_optical_flow(zarr_path, cropID, output_dir, f)
+
+        print("optical flow calculation completed at", datetime.datetime.now(), "\n", file=f)
+        print("generating movie...", file=f)
+
+    make_movie(output_dir)
 
 # entry point
 if __name__ == "__main__":
