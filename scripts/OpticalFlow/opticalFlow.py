@@ -166,21 +166,21 @@ def create_flow_histogram(mag, width, height):
     if max_mag > 0:
         # Create histogram with 30 bins
         plt.hist(flat_mag, bins=30, color='cyan', edgecolor='blue', alpha=0.7)
-        plt.title('Flow Magnitude Distribution', color='white', fontsize=10)
-        plt.xlabel('Magnitude', color='white', fontsize=8)
-        plt.ylabel('Pixel Count', color='white', fontsize=8)
+        plt.title('Flow Magnitude Distribution', color='black', fontsize=10)
+        plt.xlabel('Magnitude', color='black', fontsize=8)
+        plt.ylabel('Pixel Count', color='black', fontsize=8)
         
         # Set max x value to show the full range
         plt.xlim(0, max_mag * 1.1)
         
         # Style the plot for visibility on dark background
         plt.grid(alpha=0.3)
-        plt.tick_params(colors='white', which='both')
+        plt.tick_params(colors='black', which='both')
         for spine in plt.gca().spines.values():
-            spine.set_edgecolor('white')
+            spine.set_edgecolor('black')
     else:
         plt.text(0.5, 0.5, 'No motion detected', 
-                horizontalalignment='center', color='white')
+                horizontalalignment='center', color='black')
     
     # Make background dark for better visibility
     plt.gca().set_facecolor('#303030')
