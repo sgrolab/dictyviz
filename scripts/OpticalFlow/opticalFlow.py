@@ -114,24 +114,24 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
         
         mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])  # calculate magnitude and angle
         hsv[..., 0] = ang * 180 / np.pi / 2  # set hue based on angle
-        hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)  # normalize magnitude so brightess pixels are scaled down to 255 
+        hsv[..., 2] = np.clip(mag * (255/15), 0, 255).astype(np.uint8) # takes raw magnitude values and will scale anything above a magntitude of 15 to a brightness of 255
 
         rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # convert hsv to bgr
 
         # Create histogram visualization
-        hist_image = create_flow_histogram(mag, width, height)
-        hist_h, hist_w = hist_image.shape[:2]
+        #hist_image = create_flow_histogram(mag, width, height)
+        #hist_h, hist_w = hist_image.shape[:2]
 
         # Position histogram in top-left corner with padding
-        hist_pad = 10
-        hist_pos_x = hist_pad
-        hist_pos_y = hist_pad
+        #hist_pad = 10
+        #hist_pos_x = hist_pad
+        #hist_pos_y = hist_pad
 
         # Create a copy of the flow visualization
         final_frame = rgb_flow.copy()
 
         # Add histogram to the frame
-        final_frame[hist_pos_y:hist_pos_y+hist_h, hist_pos_x:hist_pos_x+hist_w] = hist_image
+        #final_frame[hist_pos_y:hist_pos_y+hist_h, hist_pos_x:hist_pos_x+hist_w] = hist_image
 
         # create and add the legend to each frame 
         legend = create_flow_legend(width, height)
@@ -154,45 +154,6 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
 
     np.save(os.path.join(output_dir, "flow_raw.npy"), np.stack(flow_list))  # save raw flow data
     print(f"Saved {frame_index} flow frames and raw data to: {output_dir}", file=log_file)
-
-def create_flow_histogram(mag, width, height):
-    fig = plt.figure(figsize=(4, 2), dpi=100)
-    
-    # flatten magnitude array for histogram
-    flat_mag = mag.flatten()
-    
-    # create histogram with appropriate bins
-    max_mag = np.max(flat_mag)
-    if max_mag > 0:
-        # Create histogram with 30 bins
-        plt.hist(flat_mag, bins=30, color='cyan', edgecolor='blue', alpha=0.7)
-        plt.title('Flow Magnitude Distribution', color='black', fontsize=10)
-        plt.xlabel('Magnitude', color='black', fontsize=8)
-        plt.ylabel('Pixel Count', color='black', fontsize=8)
-        
-        # Set max x value to show the full range
-        plt.xlim(0, max_mag * 1.1)
-        
-        # Style the plot for visibility on dark background
-        plt.grid(alpha=0.3)
-        plt.tick_params(colors='black', which='both')
-        for spine in plt.gca().spines.values():
-            spine.set_edgecolor('black')
-    else:
-        plt.text(0.5, 0.5, 'No motion detected', 
-                horizontalalignment='center', color='black')
-    
-    # Make background dark for better visibility
-    plt.gca().set_facecolor('#303030')
-    
-    # Save the figure to a numpy array
-    fig.canvas.draw()
-    buffer = fig.canvas.buffer_rgba()
-    hist_image = np.asarray(buffer)[:,:,:3] 
-    
-    plt.close(fig)
-
-    return hist_image
 
 # function to create a movie from optical flow images
 def make_movie(output_dir, output_filename="optical_flow_movie.mp4", fps=10):
@@ -295,6 +256,45 @@ def create_flow_legend(width, height):
     cv2.putText(legend, "Slow", (speed_x - 25, speed_y2), font, title_scale * 0.5, (255, 255, 255), 1, cv2.LINE_AA)
     
     return legend
+
+def create_flow_histogram(mag, width, height):
+    fig = plt.figure(figsize=(4, 2), dpi=100)
+    
+    # flatten magnitude array for histogram
+    flat_mag = mag.flatten()
+    
+    # create histogram with appropriate bins
+    max_mag = np.max(flat_mag)
+    if max_mag > 0:
+        # Create histogram with 30 bins
+        plt.hist(flat_mag, bins=30, color='cyan', edgecolor='blue', alpha=0.7)
+        plt.title('Flow Magnitude Distribution', color='black', fontsize=10)
+        plt.xlabel('Magnitude', color='black', fontsize=8)
+        plt.ylabel('Pixel Count', color='black', fontsize=8)
+        
+        # Set max x value to show the full range
+        plt.xlim(0, max_mag * 1.1)
+        
+        # Style the plot for visibility on dark background
+        plt.grid(alpha=0.3)
+        plt.tick_params(colors='black', which='both')
+        for spine in plt.gca().spines.values():
+            spine.set_edgecolor('black')
+    else:
+        plt.text(0.5, 0.5, 'No motion detected', 
+                horizontalalignment='center', color='black')
+    
+    # Make background dark for better visibility
+    plt.gca().set_facecolor('#303030')
+    
+    # Save the figure to a numpy array
+    fig.canvas.draw()
+    buffer = fig.canvas.buffer_rgba()
+    hist_image = np.asarray(buffer)[:,:,:3] 
+    
+    plt.close(fig)
+
+    return hist_image
 
 # main function
 def main():
