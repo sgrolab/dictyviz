@@ -190,88 +190,47 @@ def make_movie(output_dir, output_filename="optical_flow_movie.mp4", fps=10):
 def create_flow_color_wheel(width, height):
     # make a square legend with padding
     size = min(width, height)
-    legend_size = int(size * 0.2)  # Legend size as 20% of frame dimension
-    min_size = 120
+    legend_size = int(size * 0.10)  # Legend size as 10% of frame dimension
+    min_size = 100
     legend_size = max(legend_size, min_size)
-    legend = np.zeros((legend_size, legend_size, 3), dtype=np.uint8) + 20  # dark gray background
+    legend = np.zeros((legend_size, legend_size, 3), dtype=np.uint8) + 20  # dark grey background
     
     # calculate center and radius
     center_x, center_y = legend_size // 2, legend_size // 2
-    max_radius = (legend_size // 2) - 10  # Leaving margin for border
+    max_radius = (legend_size // 2) - 2 
     
     # create the color wheel
     for y in range(legend_size):
         for x in range(legend_size):
-            # Calculate distance from center
+            # calculate distance from center
             dx, dy = x - center_x, y - center_y
             distance = np.sqrt(dx**2 + dy**2)
             
-            # Skip pixels outside the circle
+            # skip pixels outside the circle
             if distance > max_radius:
                 continue
             
-            # Calculate angle and normalize to 0-360 degrees
+            # calculate angle and normalize to 0-360 degrees
+            # Note: arctan2 in OpenCV uses (-y, x) to match visualization convention
             angle = np.degrees(np.arctan2(-dy, dx)) % 360
             
-            # Normalize distance to 0-1 range for brightness
+            # normalize distance to 0-1 range for brightness
             normalized_distance = distance / max_radius
             
-            # Set HSV values based on angle and distance
-            hue = angle / 2  # OpenCV uses 0-180 for hue (represents 0-360 degrees)
+            # set HSV values based on angle and distance
+            # OpenCV uses 0-180 for hue (represents 0-360 degrees)
+            hue = angle / 2
             saturation = 255
             
-            # Make center dimmer, edges brighter
+            # makes the center dimmer, edges brighter
             value = int(normalized_distance * 255)
             
-            # Convert HSV to BGR for this pixel
+            # convert HSV to BGR for this pixel
             color = cv2.cvtColor(np.uint8([[[hue, saturation, value]]]), cv2.COLOR_HSV2BGR)[0][0]
             legend[y, x] = color
     
-    # Add border
+    # add a thin border around the wheel
     cv2.circle(legend, (center_x, center_y), max_radius, (200, 200, 200), 1)
-    
-    # Add cardinal direction markers
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = legend_size / 400
-    font_thickness = 1
-    
-    # Direction labels
-    directions = [
-        ("", 0, center_x + max_radius + 5, center_y),                  # Right
-        ("", 90, center_x, center_y + max_radius + 15),                # Down
-        ("", 180, center_x - max_radius - 15, center_y),               # Left
-        ("", 270, center_x, center_y - max_radius - 5)                 # Up
-    ]
-    
-    for label, angle, x, y in directions:
-        cv2.putText(legend, label, (int(x), int(y)), font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
-    
-    # Add title
-    title_y = 15
-    cv2.putText(legend, "Flow Direction", (center_x - 40, title_y), font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
-    
-    # Add magnitude scale
-    scale_width = 10
-    scale_height = max_radius * 2
-    scale_x = legend_size - 25
-    scale_y = (legend_size - scale_height) // 2
-    
-    # Create gradient
-    for y in range(scale_height):
-        brightness = int(255 * y / scale_height)
-        y_pos = scale_y + y
-        cv2.rectangle(legend, (scale_x, y_pos), (scale_x + scale_width, y_pos + 1), 
-                     (brightness, brightness, brightness), -1)
-    
-    # Add scale border
-    cv2.rectangle(legend, (scale_x, scale_y), (scale_x + scale_width, scale_y + scale_height), 
-                 (200, 200, 200), 1)
-    
-    # Add scale labels
-    cv2.putText(legend, "15", (scale_x + scale_width + 5, scale_y + 10), font, font_scale * 0.7, 
-               (255, 255, 255), font_thickness, cv2.LINE_AA)
-    cv2.putText(legend, "0", (scale_x + scale_width + 5, scale_y + scale_height), font, font_scale * 0.7, 
-               (255, 255, 255), font_thickness, cv2.LINE_AA)
     
     return legend
 
