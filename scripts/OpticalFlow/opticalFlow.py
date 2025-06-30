@@ -63,7 +63,7 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
             # use parameters optimized for larger movements
             flow = cv2.calcOpticalFlowFarneback(
                 prev=prev_frame, next=curr_frame, flow=None,
-                pyr_scale=0.5, levels=7,      # Fewer levels to focus on larger structures
+                pyr_scale=0.4, levels=7,      # Fewer levels to focus on larger structures
                 winsize=15,                   # Larger window for capturing group movements
                 iterations=10,                # More iterations for accuracy
                 poly_n=7,                     # Larger neighborhood for group behavior
@@ -111,11 +111,11 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
         
         mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])  # calculate magnitude and angle
         hsv[..., 0] = ang * 180 / np.pi / 2  # set hue based on angle
-        hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)  # normalize magnitude
+        hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)  # normalize magnitude so brightess pixels are scaled down to 255 
 
         rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # convert hsv to bgr
 
-        # create and add the legend to each frame
+        # create and add the legend to each frame 
         legend = create_flow_legend(width, height)
         legend_h, legend_w = legend.shape[:2]
 
@@ -175,8 +175,8 @@ def make_movie(output_dir, output_filename="optical_flow_movie.mp4", fps=10):
 
 def create_flow_legend(width, height):
 
-    legend_width = int(width * 0.25)
-    legend_height = int(height * 0.22)
+    legend_width = int(width * 0.15)
+    legend_height = int(height * 0.15)
     min_size = 120
     legend_width = max(legend_width, min_size)
     legend_height = max(legend_height, min_size)
@@ -189,10 +189,6 @@ def create_flow_legend(width, height):
     
     # add border
     cv2.rectangle(legend, (0, 0), (legend_width-1, legend_height-1), (200, 200, 200), 1)
-
-
-    # adds the title 
-    cv2.putText(legend, "Optical Flow", (10, 20), font, title_scale, (255, 255, 255), 1, cv2.LINE_AA)
 
     
     # define the correct color wheel mapping
@@ -221,9 +217,9 @@ def create_flow_legend(width, height):
     
     # add speed legend on right side
     speed_width = 20
-    speed_x = legend_width - 40
+    speed_x = legend_width - 20
     speed_y1 = y_start
-    speed_y2 = legend_height - 30
+    speed_y2 = legend_height - 10
     speed_height = speed_y2 - speed_y1
     
     # create gradient
@@ -236,7 +232,6 @@ def create_flow_legend(width, height):
     cv2.rectangle(legend, (speed_x, speed_y1), (speed_x + speed_width, speed_y2), (200, 200, 200), 1)
     
     # add speed labels
-    cv2.putText(legend, "Speed", (speed_x - 8, speed_y1 - 10), font, title_scale * 0.9, (255, 255, 255), 1, cv2.LINE_AA)
     cv2.putText(legend, "Fast", (speed_x + speed_width + 5, speed_y1 + 5), font, title_scale * 0.8, (255, 255, 255), 1, cv2.LINE_AA)
     cv2.putText(legend, "Slow", (speed_x + speed_width + 5, speed_y2), font, title_scale * 0.8, (255, 255, 255), 1, cv2.LINE_AA)
     
