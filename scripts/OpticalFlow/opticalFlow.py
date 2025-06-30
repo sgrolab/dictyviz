@@ -237,10 +237,10 @@ def create_flow_color_wheel(width, height):
     
     # Direction labels
     directions = [
-        (0, center_x + max_radius + 5, center_y),                  # Right
-        (90, center_x, center_y + max_radius + 15),                # Down
-        (180, center_x - max_radius - 15, center_y),               # Left
-        (270, center_x, center_y - max_radius - 5)                 # Up
+        ("", 0, center_x + max_radius + 5, center_y),                  # Right
+        ("", 90, center_x, center_y + max_radius + 15),                # Down
+        ("", 180, center_x - max_radius - 15, center_y),               # Left
+        ("", 270, center_x, center_y - max_radius - 5)                 # Up
     ]
     
     for label, angle, x, y in directions:
