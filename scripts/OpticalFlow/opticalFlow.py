@@ -133,12 +133,6 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
         # Add histogram to the frame
         final_frame[hist_pos_y:hist_pos_y+hist_h, hist_pos_x:hist_pos_x+hist_w] = hist_image
 
-        # Add text with frame number and max magnitude
-        max_mag = np.max(mag)
-        cv2.putText(final_frame, f"Frame: {frame_index}, Max Mag: {max_mag:.2f}", 
-           (hist_pos_x, hist_pos_y + hist_h + 20), 
-           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-
         # create and add the legend to each frame 
         legend = create_flow_legend(width, height)
         legend_h, legend_w = legend.shape[:2]
@@ -194,8 +188,8 @@ def create_flow_histogram(mag, width, height):
     
     # Save the figure to a numpy array
     fig.canvas.draw()
-    hist_image = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    hist_image = hist_image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    buffer = fig.canvas.buffer_rgba()
+    hist_image = np.asarray(buffer)[:,:,:3] 
     
     plt.close(fig)
 
