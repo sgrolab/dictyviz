@@ -134,7 +134,7 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
         #final_frame[hist_pos_y:hist_pos_y+hist_h, hist_pos_x:hist_pos_x+hist_w] = hist_image
 
         # create and add the legend to each frame 
-        legend = create_flow_legend(width, height)
+        legend = create_flow_color_wheel(width, height)
         legend_h, legend_w = legend.shape[:2]
 
         # position in bottom right with padding
@@ -176,14 +176,8 @@ def make_movie(output_dir, output_filename="optical_flow_movie.mp4", fps=10):
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-    # saves a standalone legend image for reference
-    standalone_legend = create_flow_legend(400, 300)  # Fixed size for reference image
-    imageio.imwrite(os.path.join(output_dir, "flow_legend.png"), standalone_legend)
-
     for fname in frames:
-    
-        #add loading numpy array and taking the max of that so everything gets scaled to that value
-         
+
         img = cv2.imread(os.path.join(output_dir, fname))
         if img is not None:
             writer.write(img)
@@ -193,67 +187,91 @@ def make_movie(output_dir, output_filename="optical_flow_movie.mp4", fps=10):
     writer.release()
     print(f"movie saved to: {output_path}")
 
-def create_flow_legend(width, height):
-
-    legend_width = int(width * 0.15)
-    legend_height = int(height * 0.15)
+def create_flow_color_wheel(width, height):
+    # make a square legend with padding
+    size = min(width, height)
+    legend_size = int(size * 0.2)  # Legend size as 20% of frame dimension
     min_size = 120
-    legend_width = max(legend_width, min_size)
-    legend_height = max(legend_height, min_size)
-
+    legend_size = max(legend_size, min_size)
+    legend = np.zeros((legend_size, legend_size, 3), dtype=np.uint8) + 20  # dark gray background
+    
+    # calculate center and radius
+    center_x, center_y = legend_size // 2, legend_size // 2
+    max_radius = (legend_size // 2) - 10  # Leaving margin for border
+    
+    # create the color wheel
+    for y in range(legend_size):
+        for x in range(legend_size):
+            # Calculate distance from center
+            dx, dy = x - center_x, y - center_y
+            distance = np.sqrt(dx**2 + dy**2)
+            
+            # Skip pixels outside the circle
+            if distance > max_radius:
+                continue
+            
+            # Calculate angle and normalize to 0-360 degrees
+            angle = np.degrees(np.arctan2(-dy, dx)) % 360
+            
+            # Normalize distance to 0-1 range for brightness
+            normalized_distance = distance / max_radius
+            
+            # Set HSV values based on angle and distance
+            hue = angle / 2  # OpenCV uses 0-180 for hue (represents 0-360 degrees)
+            saturation = 255
+            
+            # Make center dimmer, edges brighter
+            value = int(normalized_distance * 255)
+            
+            # Convert HSV to BGR for this pixel
+            color = cv2.cvtColor(np.uint8([[[hue, saturation, value]]]), cv2.COLOR_HSV2BGR)[0][0]
+            legend[y, x] = color
+    
+    # Add border
+    cv2.circle(legend, (center_x, center_y), max_radius, (200, 200, 200), 1)
+    
+    # Add cardinal direction markers
     font = cv2.FONT_HERSHEY_SIMPLEX
-    title_scale = legend_height / 400 
+    font_scale = legend_size / 400
+    font_thickness = 1
     
-    # create base image with black background
-    legend = np.zeros((legend_height, legend_width, 3), dtype=np.uint8) + 20  
-    
-    # add border
-    cv2.rectangle(legend, (0, 0), (legend_width-1, legend_height-1), (200, 200, 200), 1)
-
-    
-    # define the correct color wheel mapping
+    # Direction labels
     directions = [
-        ("Right", 0, (255, 0, 0)),       # Red
-        ("Down-Right", 45, (255, 128, 0)),  # Orange-Yellow
-        ("Down", 90, (255, 255, 0)),     # Yellow-Green
-        ("Down-Left", 135, (0, 255, 128)),  # Green-Cyan
-        ("Left", 180, (0, 255, 255)),    # Cyan
-        ("Up-Left", 225, (0, 128, 255)),    # Blue-Cyan
-        ("Up", 270, (0, 0, 255)),        # Blue
-        ("Up-Right", 315, (255, 0, 255)),   # Violet-Pink
+        (0, center_x + max_radius + 5, center_y),                  # Right
+        (90, center_x, center_y + max_radius + 15),                # Down
+        (180, center_x - max_radius - 15, center_y),               # Left
+        (270, center_x, center_y - max_radius - 5)                 # Up
     ]
     
-    # draw color legend entries
-    y_start = 40
-    y_step = (legend_height - y_start - 10) // len(directions)
+    for label, angle, x, y in directions:
+        cv2.putText(legend, label, (int(x), int(y)), font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
     
-    for i, (label, _, color) in enumerate(directions):
-        y = y_start + i * y_step
-        # color box
-        cv2.rectangle(legend, (10, y-10), (30, y+10), color, -1)
-        cv2.rectangle(legend, (10, y-10), (30, y+10), (200, 200, 200), 1)
-        # Label
-        cv2.putText(legend, label, (40, y+5), font, title_scale * 0.9, (255, 255, 255), 1, cv2.LINE_AA)
+    # Add title
+    title_y = 15
+    cv2.putText(legend, "Flow Direction", (center_x - 40, title_y), font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
     
-    # add speed legend on right side
-    speed_width = 15
-    speed_x = legend_width - 45
-    speed_y1 = y_start
-    speed_y2 = legend_height - 20
-    speed_height = speed_y2 - speed_y1
+    # Add magnitude scale
+    scale_width = 10
+    scale_height = max_radius * 2
+    scale_x = legend_size - 25
+    scale_y = (legend_size - scale_height) // 2
     
-    # create gradient
-    for y in range(speed_height):
-        brightness = int(255 * (1 - y / speed_height))
-        y_pos = speed_y1 + y
-        cv2.rectangle(legend, (speed_x, y_pos), (speed_x + speed_width, y_pos + 1), (brightness, brightness, brightness), -1)
+    # Create gradient
+    for y in range(scale_height):
+        brightness = int(255 * y / scale_height)
+        y_pos = scale_y + y
+        cv2.rectangle(legend, (scale_x, y_pos), (scale_x + scale_width, y_pos + 1), 
+                     (brightness, brightness, brightness), -1)
     
-    # add border around speed legend
-    cv2.rectangle(legend, (speed_x, speed_y1), (speed_x + speed_width, speed_y2), (200, 200, 200), 1)
+    # Add scale border
+    cv2.rectangle(legend, (scale_x, scale_y), (scale_x + scale_width, scale_y + scale_height), 
+                 (200, 200, 200), 1)
     
-    # add speed labels
-    cv2.putText(legend, "Fast", (speed_x - 25, speed_y1 + 5), font, title_scale * 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-    cv2.putText(legend, "Slow", (speed_x - 25, speed_y2), font, title_scale * 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+    # Add scale labels
+    cv2.putText(legend, "15", (scale_x + scale_width + 5, scale_y + 10), font, font_scale * 0.7, 
+               (255, 255, 255), font_thickness, cv2.LINE_AA)
+    cv2.putText(legend, "0", (scale_x + scale_width + 5, scale_y + scale_height), font, font_scale * 0.7, 
+               (255, 255, 255), font_thickness, cv2.LINE_AA)
     
     return legend
 
