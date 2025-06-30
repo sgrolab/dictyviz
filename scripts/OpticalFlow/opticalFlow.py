@@ -190,7 +190,7 @@ def make_movie(output_dir, output_filename="optical_flow_movie.mp4", fps=10):
 def create_flow_color_wheel(width, height):
     # make a square legend with padding
     size = min(width, height)
-    legend_size = int(size * 0.10)  # Legend size as 10% of frame dimension
+    legend_size = int(size * 0.15) # Legend size as 15% of frame dimension
     min_size = 100
     legend_size = max(legend_size, min_size)
     legend = np.zeros((legend_size, legend_size, 3), dtype=np.uint8) + 20  # dark grey background
@@ -211,7 +211,7 @@ def create_flow_color_wheel(width, height):
                 continue
             
             # calculate angle and normalize to 0-360 degrees
-            angle = (np.degrees(np.arctan2(dy, dx)) + 360) % 360
+            angle = (np.degrees(np.arctan2(dy, dx)) + 135) % 360
             
             # normalize distance to 0-1 range for brightness
             normalized_distance = distance / max_radius
