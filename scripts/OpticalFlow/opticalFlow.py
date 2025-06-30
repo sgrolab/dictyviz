@@ -211,7 +211,7 @@ def create_flow_color_wheel(width, height):
                 continue
             
             # calculate angle and normalize to 0-360 degrees
-            angle = np.degrees(np.arctan2(dy, dx) - 120) % 360
+            angle = (np.degrees(np.arctan2(-dy, dx)) + 360) % 360
             
             # normalize distance to 0-1 range for brightness
             normalized_distance = distance / max_radius
