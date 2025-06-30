@@ -5,6 +5,7 @@ import numpy as np
 import imageio
 import datetime
 import zarr
+import matplotlib.pyplot as plt
 
 def enhance_cell_contrast(frame):
         # CLAHE (Contrast Limited Adaptive Histogram Equalization) enhances local contrast
@@ -115,6 +116,27 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
 
         rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # convert hsv to bgr
 
+        # Create histogram visualization
+        hist_image = create_flow_histogram(mag, width, height)
+        hist_h, hist_w = hist_image.shape[:2]
+
+        # Position histogram in top-left corner with padding
+        hist_pad = 10
+        hist_pos_x = hist_pad
+        hist_pos_y = hist_pad
+
+        # Create a copy of the flow visualization
+        final_frame = rgb_flow.copy()
+
+        # Add histogram to the frame
+        final_frame[hist_pos_y:hist_pos_y+hist_h, hist_pos_x:hist_pos_x+hist_w] = hist_image
+
+        # Add text with frame number and max magnitude
+        max_mag = np.max(mag)
+        cv2.putText(final_frame, f"Frame: {frame_index}, Max Mag: {max_mag:.2f}", 
+           (hist_pos_x, hist_pos_y + hist_h + 20), 
+           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+
         # create and add the legend to each frame 
         legend = create_flow_legend(width, height)
         legend_h, legend_w = legend.shape[:2]
@@ -137,6 +159,43 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
 
     np.save(os.path.join(output_dir, "flow_raw.npy"), np.stack(flow_list))  # save raw flow data
     print(f"Saved {frame_index} flow frames and raw data to: {output_dir}", file=log_file)
+
+def create_flow_histogram(mag, width, height):
+    fig = plt.figure(figsize=(4, 2), dpi=100)
+    
+    # flatten magnitude array for histogram
+    flat_mag = mag.flatten()
+    
+    # create histogram with appropriate bins
+    max_mag = np.max(flat_mag)
+    if max_mag > 0:
+        # Create histogram with 30 bins
+        plt.hist(flat_mag, bins=30, color='cyan', edgecolor='blue', alpha=0.7)
+        plt.title('Flow Magnitude Distribution', color='white', fontsize=10)
+        plt.xlabel('Magnitude', color='white', fontsize=8)
+        plt.ylabel('Pixel Count', color='white', fontsize=8)
+        
+        # Set max x value to show the full range
+        plt.xlim(0, max_mag * 1.1)
+        
+        # Style the plot for visibility on dark background
+        plt.grid(alpha=0.3)
+        plt.tick_params(colors='white', which='both')
+        for spine in plt.gca().spines.values():
+            spine.set_edgecolor('white')
+    else:
+        plt.text(0.5, 0.5, 'No motion detected', 
+                horizontalalignment='center', color='white')
+    
+    # Make background dark for better visibility
+    plt.gca().set_facecolor('#303030')
+    
+    # Save the figure to a numpy array
+    fig.canvas.draw()
+    hist_image = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    hist_image = hist_image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    
+    plt.close(fig)
 
 # function to create a movie from optical flow images
 def make_movie(output_dir, output_filename="optical_flow_movie.mp4", fps=10):
@@ -164,6 +223,9 @@ def make_movie(output_dir, output_filename="optical_flow_movie.mp4", fps=10):
     imageio.imwrite(os.path.join(output_dir, "flow_legend.png"), standalone_legend)
 
     for fname in frames:
+    
+        #add loading numpy array and taking the max of that so everything gets scaled to that value
+         
         img = cv2.imread(os.path.join(output_dir, fname))
         if img is not None:
             writer.write(img)
