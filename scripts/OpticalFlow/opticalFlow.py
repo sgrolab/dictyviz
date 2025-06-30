@@ -5,6 +5,8 @@ import numpy as np
 import imageio
 import datetime
 import zarr
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 def enhance_cell_contrast(frame):
@@ -196,6 +198,8 @@ def create_flow_histogram(mag, width, height):
     hist_image = hist_image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
     
     plt.close(fig)
+
+    return hist_image
 
 # function to create a movie from optical flow images
 def make_movie(output_dir, output_filename="optical_flow_movie.mp4", fps=10):
