@@ -216,10 +216,10 @@ def create_flow_legend(width, height):
         cv2.putText(legend, label, (40, y+5), font, title_scale * 0.9, (255, 255, 255), 1, cv2.LINE_AA)
     
     # add speed legend on right side
-    speed_width = 20
-    speed_x = legend_width - 20
+    speed_width = 15
+    speed_x = legend_width - 45
     speed_y1 = y_start
-    speed_y2 = legend_height - 10
+    speed_y2 = legend_height - 20
     speed_height = speed_y2 - speed_y1
     
     # create gradient
@@ -232,8 +232,8 @@ def create_flow_legend(width, height):
     cv2.rectangle(legend, (speed_x, speed_y1), (speed_x + speed_width, speed_y2), (200, 200, 200), 1)
     
     # add speed labels
-    cv2.putText(legend, "Fast", (speed_x + speed_width + 5, speed_y1 + 5), font, title_scale * 0.8, (255, 255, 255), 1, cv2.LINE_AA)
-    cv2.putText(legend, "Slow", (speed_x + speed_width + 5, speed_y2), font, title_scale * 0.8, (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.putText(legend, "Fast", (speed_x - 25, speed_y1 + 5), font, title_scale * 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.putText(legend, "Slow", (speed_x - 25, speed_y2), font, title_scale * 0.5, (255, 255, 255), 1, cv2.LINE_AA)
     
     return legend
 
