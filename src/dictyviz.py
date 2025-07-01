@@ -9,6 +9,7 @@ import cv2
 import cmapy
 import json
 from PIL import ImageFont, ImageDraw, Image
+from dask.distributed import Client, wait
 import numpy as np
 from tqdm import tqdm
 
@@ -111,7 +112,39 @@ def calcMaxProjections(root, maxProjectionsRoot, res_lvl=0):
             frame = resArray[i, j, :, :, :]
             maxZ[i,j] = [np.max(frame,axis=0), np.argmax(frame,axis=0)]
             maxX[i,j] = np.max(frame,axis=2)
-            maxY[i,j] = np.max(frame,axis=1)          
+            maxY[i,j] = np.max(frame,axis=1)      
+
+
+def calcMaxs(resArray, i, j, maxZ, maxX, maxY):
+    frame = resArray[i, j, :, :, :]
+    maxZ[i,j] = [np.max(frame,axis=0), np.argmax(frame,axis=0)]
+    maxX[i,j] = np.max(frame,axis=2)
+    maxY[i,j] = np.max(frame,axis=1)    
+
+def calcMaxProjectionsDask(root, maxProjectionsRoot, client, res_lvl=0):
+
+    # define resolution level
+    resArray = root['0'][str(res_lvl)]
+
+    #if cropping, get crop parameters from parameters.json and redefine resArray
+    cropDims = getCroppingDimsFromJSON(maxProjectionsRoot.store.path + '/../../parameters.json')
+    if cropDims:
+        resArray = resArray[:, :, cropDims[2][0]:cropDims[2][1], cropDims[1][0]:cropDims[1][1], cropDims[0][0]:cropDims[0][1]]
+
+    # get dataset dimensions
+    lenT, lenCh, lenZ, lenY, lenX = resArray.shape
+
+    # create zarr arrays for each max projection 
+    maxZ = maxProjectionsRoot.zeros('maxz',shape=(lenT,lenCh,2,lenY,lenX),chunks=(1,lenCh,2,lenY,lenX))
+    maxX = maxProjectionsRoot.zeros('maxx',shape=(lenT,lenCh,lenZ,lenY),chunks=(1,lenCh,lenZ,lenY))
+    maxY = maxProjectionsRoot.zeros('maxy',shape=(lenT,lenCh,lenZ,lenX),chunks=(1,lenCh,lenZ,lenX))
+
+    # iterate through each timepoint and compute max projections
+    futures = []
+    for i in tqdm(range(lenT)):
+        for j in range(lenCh):
+            futures.append(client.submit(calcMaxs, resArray, i, j, maxZ, maxX, maxY))
+    wait(futures)    
 
 
 def calcSlicedMaxProjections(root, slicedMaxProjectionsRoot, res_lvl=0):
@@ -336,7 +369,6 @@ def makeOrthoMaxVideoClean(root, channel, cmap, ext='.avi'):
 
     movieWidth = lenX 
     movieHeight = lenY
-    print('Movie dimensions:', movieWidth, 'x', movieHeight)
 
     # calc scaleMin, scaleMax, and gamma if not provided
     if scaleMin == "None" or scaleMax == "None":
