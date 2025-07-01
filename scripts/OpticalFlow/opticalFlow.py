@@ -230,7 +230,22 @@ def create_flow_color_wheel(width, height):
     
     # add a thin border around the wheel
     cv2.circle(legend, (center_x, center_y), max_radius, (200, 200, 200), 1)
-    
+
+    # add magnitude labels of 0 and 15 on the circle 
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.4
+    font_thickness = 1
+
+    text_size = cv2.getTextSize("0", font, font_scale, font_thickness)[0]
+    text_x = center_x - text_size[0] // 2
+    text_y = center_y + text_size[1] // 2
+    cv2.putText(legend, "0", (text_x, text_y), font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
+
+    text_size = cv2.getTextSize("15", font, font_scale, font_thickness)[0]
+    edge_x = center_x + max_radius - text_size[0] - 2  
+    edge_y = center_y
+    cv2.putText(legend, "15", (edge_x, edge_y), font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
+
     return legend
 
 def create_flow_histogram(mag, width, height):
