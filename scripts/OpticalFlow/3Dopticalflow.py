@@ -1,30 +1,25 @@
 import opticalflow3D
 import zarr
 import os
+
+# was getting an error message for using the wrong c++ version 
+os.environ["CXXFLAGS"] = "-std=c++17"
+
 import sys
 import cv2
 import numpy as np
 import imageio
 import datetime
 
+
 def compute_3D_opticalflow(zarr_path):
 
-    # open zarr file
-    print(f"Opening zarr file: {zarr_path}")
     zarrFolder = zarr.open(zarr_path, mode='r+') 
-        
-    # access the data array
+    
     resArray = zarrFolder['0']['0']
-    print(f"Data array shape: {resArray.shape}")
         
-    # extract two consecutive frames for optical flow
     frame1 = resArray[0,0,:,:,:]
     frame2 = resArray[1,0,:,:,:]
-    
-    print(f"Frame1 shape: {frame1.shape}, Frame2 shape: {frame2.shape}")
-    
-    # Debug: Check what's available in opticalflow3D module
-    print("Available attributes in opticalflow3D:", dir(opticalflow3D))
     
     farneback = opticalflow3D.Farneback3D(
         iters = 5,
@@ -44,7 +39,7 @@ def compute_3D_opticalflow(zarr_path):
         overlap=(64, 64, 64),
         threadsperblock=(8, 8, 8),
     )
-        
+    
     # save results
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     parent_dir = os.path.dirname(zarr_path)
@@ -60,7 +55,6 @@ def compute_3D_opticalflow(zarr_path):
     print(f"Optical flow results saved to: {output_dir}")
     
     return output_vz, output_vy, output_vx, output_confidence
-
 
 def main():
     # check if zarr_path is provided as command line argument
