@@ -23,7 +23,10 @@ def compute_3D_opticalflow(zarr_path):
     
     print(f"Frame1 shape: {frame1.shape}, Frame2 shape: {frame2.shape}")
     
-    farneback = opticalflow3D.Farnbeback3d(
+    # Debug: Check what's available in opticalflow3D module
+    print("Available attributes in opticalflow3D:", dir(opticalflow3D))
+    
+    farneback = opticalflow3D.Farneback3D(
         iters = 5,
         num_levels = 5,
         scale = 0.5,
