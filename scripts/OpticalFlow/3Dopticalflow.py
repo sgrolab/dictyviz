@@ -1,20 +1,17 @@
 import opticalflow3D
 import zarr
 import os
-
-# Set CUDA compilation environment variables to fix C++ dialect issues
-os.environ["CCCL_IGNORE_DEPRECATED_CPP_DIALECT"] = "1"
-os.environ["CXXFLAGS"] = "-std=c++17"
-os.environ["NVCC_PREPEND_FLAGS"] = "-std=c++17"
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-os.environ["CUPY_CACHE_IN_MEMORY"] = "1"  # use in-memory cache to avoid file system issues
-os.environ["CUPY_DUMP_CUDA_SOURCE_ON_ERROR"] = "1"  # Better error messages
-
 import sys
 import cv2
 import numpy as np
 import imageio
 import datetime
+
+os.environ["CUPY_DUMP_CUDA_SOURCE_ON_ERROR"] = "1"
+os.environ["CUPY_CACHE_IN_MEMORY"] = "1"
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+os.environ["CCCL_IGNORE_DEPRECATED_CPP_DIALECT"] = "1"
+os.environ["CUPY_NVRTC_EXTRA_FLAGS"] = "--std=c++17"
 
 def compute_3D_opticalflow(zarr_path):
 
