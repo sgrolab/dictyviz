@@ -2,8 +2,13 @@ import opticalflow3D
 import zarr
 import os
 
-# was getting an error message for using the wrong c++ version 
+# Set CUDA compilation environment variables to fix C++ dialect issues
+os.environ["CCCL_IGNORE_DEPRECATED_CPP_DIALECT"] = "1"
 os.environ["CXXFLAGS"] = "-std=c++17"
+os.environ["NVCC_PREPEND_FLAGS"] = "-std=c++17"
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+os.environ["CUPY_CACHE_IN_MEMORY"] = "1"  # use in-memory cache to avoid file system issues
+os.environ["CUPY_DUMP_CUDA_SOURCE_ON_ERROR"] = "1"  # Better error messages
 
 import sys
 import cv2
@@ -80,6 +85,16 @@ def main():
         
     except Exception as e:
         print(f"Error during optical flow computation: {str(e)}")
+        
+        # Check if it's a CUDA compilation error
+        if "CUDA" in str(e) or "cupy" in str(e).lower() or "nvcc" in str(e).lower():
+            print("This appears to be a CUDA compilation error.")
+            print("Possible solutions:")
+            print("1. Update CuPy: pip install --upgrade cupy-cuda11x")
+            print("2. Clear cache: rm -rf ~/.cupy/kernel_cache")
+            print("3. Check CUDA/CuPy version compatibility")
+            print("4. Consider using CPU-based optical flow instead")
+        
         sys.exit(1)
 
 if __name__ == "__main__":
