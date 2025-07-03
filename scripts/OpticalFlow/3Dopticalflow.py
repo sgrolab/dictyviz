@@ -7,11 +7,28 @@ import numpy as np
 import imageio
 import datetime
 
+# Import cupy to handle GPU-CPU memory transfers
+try:
+    import cupy as cp
+    CUPY_AVAILABLE = True
+except ImportError:
+    CUPY_AVAILABLE = False
+    print("Warning: CuPy not available")
+
 os.environ["CUPY_DUMP_CUDA_SOURCE_ON_ERROR"] = "1"
 os.environ["CUPY_CACHE_IN_MEMORY"] = "1"
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 os.environ["CCCL_IGNORE_DEPRECATED_CPP_DIALECT"] = "1"
 os.environ["CUPY_NVRTC_EXTRA_FLAGS"] = "--std=c++17"
+
+def cupy_to_numpy(array):
+    """Convert CuPy array to NumPy array if needed"""
+    if CUPY_AVAILABLE and hasattr(array, 'get'):
+        # This is a CuPy array, convert to NumPy
+        return array.get()
+    else:
+        # Already a NumPy array or CuPy not available
+        return array
 
 def compute_3D_opticalflow(zarr_path):
 
@@ -40,6 +57,15 @@ def compute_3D_opticalflow(zarr_path):
         overlap=(64, 64, 64),
         threadsperblock=(8, 8, 8),
     )
+    
+    # Convert CuPy arrays to NumPy arrays for CPU operations
+    print("Converting GPU results to CPU memory...")
+    output_vz = cupy_to_numpy(output_vz)
+    output_vy = cupy_to_numpy(output_vy)
+    output_vx = cupy_to_numpy(output_vx)
+    output_confidence = cupy_to_numpy(output_confidence)
+    
+    print(f"Converted arrays - vz: {output_vz.shape}, vy: {output_vy.shape}, vx: {output_vx.shape}, confidence: {output_confidence.shape}")
     
     # save results
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
