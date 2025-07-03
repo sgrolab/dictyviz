@@ -11,13 +11,12 @@ import numpy as np
 import imageio
 import datetime
 
-
 def compute_3D_opticalflow(zarr_path):
 
     zarrFolder = zarr.open(zarr_path, mode='r+') 
     
     resArray = zarrFolder['0']['0']
-        
+    
     frame1 = resArray[0,0,:,:,:]
     frame2 = resArray[1,0,:,:,:]
     
