@@ -24,22 +24,30 @@ def compute_3D_opticalflow(zarr_path):
     # Initialize the farneback object
     farneback = opticalflow3D.Farneback3D(
         iters = 5,
-        num_levels = 5,
-        scale = 0.5,
-        spatial_size = 7,
+        num_levels = 3,
+        scale = 0.6,
+        spatial_size = 5,
         presmoothing = 7,
         filter_type = "box",
         filter_size = 21,
     )
     
-    # Initialize lists to store all optical flow results
-    all_vz = []
-    all_vy = []
-    all_vx = []
-    all_confidence = []
+    # create main output directory
+    parent_dir = os.path.dirname(zarr_path)
+    output_dir = os.path.join(parent_dir, "optical_flow_3Dresults")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    successful_frames = []
     
     # Loop through consecutive frame pairs
     for i in range(num_frames - 1):
+        print(f"\n--- Processing frame pair {i} -> {i+1} ---")
+        
+        # Monitor GPU memory
+        if torch.cuda.is_available():
+            memory_allocated = torch.cuda.memory_allocated() / 1024**3
+            memory_reserved = torch.cuda.memory_reserved() / 1024**3
+            print(f"GPU Memory - Allocated: {memory_allocated:.2f}GB, Reserved: {memory_reserved:.2f}GB")
 
         # get consecutive frames
         frame1 = resArray[i, 0, :, :, :]
@@ -49,76 +57,68 @@ def compute_3D_opticalflow(zarr_path):
         frame1_np = np.asarray(frame1, dtype=np.float32)
         frame2_np = np.asarray(frame2, dtype=np.float32)
         
+        print(f"Input arrays - frame1_np: {frame1_np.shape}, frame2_np: {frame2_np.shape}")
+        
         try:
             # Calculate optical flow between consecutive frames
             output_vz, output_vy, output_vx, output_confidence = farneback.calculate_flow(
                 frame1_np, frame2_np, 
                 start_point=(0, 0, 0),
-                total_vol=(217, 286, 286),
-                sub_volume=(185, 254, 254),
-                overlap=(23, 31, 31),
+                total_vol=(217, 1906, 1440),
+                sub_volume=(128, 192, 192),
+                overlap=(16, 24, 24),
             )
             
-            # Convert PyTorch tensors back to NumPy arrays if needed
+            print(f"Output tensors - vz: {output_vz.shape}, vy: {output_vy.shape}, vx: {output_vx.shape}, conf: {output_confidence.shape}")
+            print(f"Output types - vz: {type(output_vz)}, vy: {type(output_vy)}, vx: {type(output_vx)}, conf: {type(output_confidence)}")
+            
+            # Create folder for this time point
+            frame_dir = os.path.join(output_dir, str(i))
+            os.makedirs(frame_dir, exist_ok=True)
+            
+            # Save individual frame results directly
             if isinstance(output_vz, torch.Tensor):
-                output_vz = output_vz.detach().cpu().numpy()
-                output_vy = output_vy.detach().cpu().numpy()
-                output_vx = output_vx.detach().cpu().numpy()
-                output_confidence = output_confidence.detach().cpu().numpy()
+                np.save(os.path.join(frame_dir, "optical_flow_vz.npy"), output_vz.detach().cpu().numpy())
+                np.save(os.path.join(frame_dir, "optical_flow_vy.npy"), output_vy.detach().cpu().numpy())
+                np.save(os.path.join(frame_dir, "optical_flow_vx.npy"), output_vx.detach().cpu().numpy())
+                np.save(os.path.join(frame_dir, "optical_flow_confidence.npy"), output_confidence.detach().cpu().numpy())
             else:
-                output_vz = np.asarray(output_vz)
-                output_vy = np.asarray(output_vy)
-                output_vx = np.asarray(output_vx)
-                output_confidence = np.asarray(output_confidence)
+                np.save(os.path.join(frame_dir, "optical_flow_vz.npy"), np.asarray(output_vz))
+                np.save(os.path.join(frame_dir, "optical_flow_vy.npy"), np.asarray(output_vy))
+                np.save(os.path.join(frame_dir, "optical_flow_vx.npy"), np.asarray(output_vx))
+                np.save(os.path.join(frame_dir, "optical_flow_confidence.npy"), np.asarray(output_confidence))
             
-            # Store results
-            all_vz.append(output_vz)
-            all_vy.append(output_vy)
-            all_vx.append(output_vx)
-            all_confidence.append(output_confidence)
+            successful_frames.append(i)
+            print(f"Frame {i}->{i+1} completed. Saved to: {frame_dir}")
             
-            print(f"Flow shapes: vz={output_vz.shape}, vy={output_vy.shape}, vx={output_vx.shape}, conf={output_confidence.shape}")
+            # Force GPU memory cleanup after each frame
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
             
         except Exception as e:
             print(f"Error processing frames {i}->{i+1}: {str(e)}")
+            # Clear GPU memory on error too
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             # Continue with next frame pair instead of stopping
             continue
     
-    # Convert lists to numpy arrays
-    print(f"\nCombining {len(all_vz)} optical flow results...")
-    output_vz = np.stack(all_vz, axis=0) if all_vz else np.array([])
-    output_vy = np.stack(all_vy, axis=0) if all_vy else np.array([])
-    output_vx = np.stack(all_vx, axis=0) if all_vx else np.array([])
-    output_confidence = np.stack(all_confidence, axis=0) if all_confidence else np.array([])
-    
-    if len(all_vz) == 0:
+    if len(successful_frames) == 0:
         raise ValueError("No optical flow results were calculated successfully")
 
     print("Optical flow calculation completed successfully!")
-    print(f"Processed {len(all_vz)} frame pairs")
-    print(f"Output types: vz={type(output_vz)}, vy={type(output_vy)}, vx={type(output_vx)}, conf={type(output_confidence)}")
-    print(f"Final output shapes: vz={output_vz.shape}, vy={output_vy.shape}, vx={output_vx.shape}, conf={output_confidence.shape}")
+    print(f"Processed {len(successful_frames)} frame pairs")
+    print(f"Successfully processed frames: {successful_frames}")
     
     # Clear GPU memory
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
         print("GPU memory cleared")
     
-    # save results
-    timestamp = datetime.datetime.now()
-    parent_dir = os.path.dirname(zarr_path)
-    output_dir = os.path.join(parent_dir, "optical_flow_3Dresults")
-    os.makedirs(output_dir, exist_ok=True)
+    print(f"Individual frame results saved in subfolders: {output_dir}")
     
-    # save flow components as numpy arrays
-    np.save(os.path.join(output_dir, f"optical_flow_vz_{timestamp}.npy"), output_vz)
-    np.save(os.path.join(output_dir, f"optical_flow_vy_{timestamp}.npy"), output_vy)
-    np.save(os.path.join(output_dir, f"optical_flow_vx_{timestamp}.npy"), output_vx)
-    np.save(os.path.join(output_dir, f"optical_flow_confidence_{timestamp}.npy"), output_confidence)
-    
-    print(f"Optical flow results saved to: {output_dir}")
-    
-    return output_vz, output_vy, output_vx, output_confidence
+    return successful_frames
     
 def main():
     # check if zarr_path is provided as command line argument
@@ -138,10 +138,10 @@ def main():
     try:
         print(f"Computing 3D optical flow for: {zarr_path}")
 
-        output_vz, output_vy, output_vx, output_confidence = compute_3D_opticalflow(zarr_path)
+        successful_frames = compute_3D_opticalflow(zarr_path)
 
         print("3D optical flow computation completed successfully!")
-        print(f"Final output shapes - vz: {output_vz.shape}, vy: {output_vy.shape}, vx: {output_vx.shape}, confidence: {output_confidence.shape}")
+        print(f"Successfully processed {len(successful_frames)} frame pairs")
 
     except Exception as e:
         print(f"Error during optical flow computation: {str(e)}")
