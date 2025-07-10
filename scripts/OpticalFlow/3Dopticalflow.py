@@ -11,8 +11,20 @@ import numpy as np
 import datetime
 import zarr
 import torch
+import logging
 
 def compute_3D_opticalflow(zarr_path):
+
+    parent_dir = os.path.dirname(zarr_path)
+    output_dir = os.path.join(parent_dir, "optical_flow_3Dresults")
+
+    # create main output directory
+    os.makedirs(output_dir, exist_ok=True)
+
+    log_file = os.path.join(output_dir, "gpu_usage.log")
+
+    #setting up logging
+    logging.basicConfig(filename=log_file, level=logging.INFO, format='%(asctime)s - %(message)s')
 
     zarrFolder = zarr.open(zarr_path, mode='r+') 
     
@@ -31,23 +43,22 @@ def compute_3D_opticalflow(zarr_path):
         filter_type = "box",
         filter_size = 21,
     )
-    
-    # create main output directory
-    parent_dir = os.path.dirname(zarr_path)
-    output_dir = os.path.join(parent_dir, "optical_flow_3Dresults")
-    os.makedirs(output_dir, exist_ok=True)
-    
+
     successful_frames = []
-    
+
     # Loop through consecutive frame pairs
     for i in range(num_frames - 1):
         print(f"\n--- Processing frame pair {i} -> {i+1} ---")
         
         # Monitor GPU memory
         if torch.cuda.is_available():
+            device_name = torch.cuda.get_device_name(0)
+            logging.info(f'GPU is available: {device_name}')
             memory_allocated = torch.cuda.memory_allocated() / 1024**3
             memory_reserved = torch.cuda.memory_reserved() / 1024**3
             print(f"GPU Memory - Allocated: {memory_allocated:.2f}GB, Reserved: {memory_reserved:.2f}GB")
+        else:
+            logging.info("GPU is not available")
 
         # get consecutive frames
         frame1 = resArray[i, 0, :, :, :]

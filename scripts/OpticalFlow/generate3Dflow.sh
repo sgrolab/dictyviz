@@ -9,4 +9,4 @@ if [ -z "$zarr_folder" ]; then
     exit 1
 fi
 
-bsub -n 6 -gpu "num=1" -q gpu_a100 -W 10:00 -J "optical_flow_3D" python OpticalFlow/3Dopticalflow.py "${zarr_folder}"
+bsub -n 6 -gpu "num=1" -q gpu_a100 -W 24:00 -J "optical_flow_3D" python 3Dopticalflow.py "${zarr_folder}"
