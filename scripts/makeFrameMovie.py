@@ -10,7 +10,7 @@ import zarr
 import cv2
 
 def load_zarr_data(zarr_path):
-    """Load zarr data from the specified path (inside 0/0)."""
+    """Load zarr data from the specified path."""
     try:
         zarr_folder = zarr.open(zarr_path, mode='r')
         res_array = zarr_folder['0']['0']
@@ -21,11 +21,29 @@ def load_zarr_data(zarr_path):
         return None
 
 def normalize_image(img, percentile_range=(5, 95)):
+
     """Normalize image using percentile clipping for display purposes."""
-    vmin = np.percentile(img, percentile_range[0])
-    vmax = np.percentile(img, percentile_range[1])
-    img_clipped = np.clip(img, vmin, vmax)
-    normalized = (img_clipped - vmin) / (vmax - vmin + 1e-8)  # avoid divide-by-zero
+    # Handle NaN and infinite values
+    img_clean = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
+    
+    # Get valid (non-zero) pixels for better normalization
+    valid_pixels = img_clean[img_clean > 0]
+    if len(valid_pixels) == 0:
+        print("Warning: No valid pixels found in image")
+        return np.zeros_like(img_clean)
+    
+    vmin = np.percentile(valid_pixels, percentile_range[0])
+    vmax = np.percentile(valid_pixels, percentile_range[1])
+    
+    print(f"Normalizing: min={vmin:.2f}, max={vmax:.2f}")
+    
+    # Avoid division by zero
+    if vmax == vmin:
+        return np.zeros_like(img_clean)
+    
+    img_clipped = np.clip(img_clean, vmin, vmax)
+    normalized = (img_clipped - vmin) / (vmax - vmin)
+    
     return normalized
 
 def create_frame_with_info(slice_img, output_size=(1200, 900)):
@@ -43,7 +61,7 @@ def save_movie(frames, output_path, fps=8, output_size=(1200, 900)):
     
     print(f"Saving {len(frames)} frames to video...")
     
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fourcc = cv2.VideoWriter_fourcc(*'H264')
     out = cv2.VideoWriter(output_path, fourcc, fps, output_size)
     
     if not out.isOpened():
@@ -66,15 +84,6 @@ def save_movie(frames, output_path, fps=8, output_size=(1200, 900)):
     return True
 
 def main():
-
-    # Construct movie output path in z_movies/<time_point>/...
-    zarr_name = os.path.basename(zarr_path).replace('.zarr', '')
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = os.path.join("z_movies", f"time_{time_point:03d}")
-
-    # create the directory if it doesn't exist
-    print("creating output folder")
-    os.makedirs(output_dir, exist_ok=True)
 
     if len(sys.argv) < 3:
         print("Usage: python3 makeMovie.py <zarr_path> <time_point>")
@@ -116,8 +125,19 @@ def main():
         frame = create_frame_with_info(slice_img, output_size)
         frames.append(frame)
 
-    output_filename = f"zstack_{zarr_name}_time{time_point:03d}_{timestamp}.mp4"
-    output_path = os.path.join(output_dir, output_filename)
+    # Construct movie output path in z_movies/<time_point>/...
+    parent_dir = os.path.dirname(zarr_path)
+    movie_dir = os.path.join(parent_dir, "z_movies")
+    os.makedirs(movie_dir, exist_ok=True)
+
+    timestamp_dir = os.path.join(movie_dir, str(time_point))
+    os.makedirs(timestamp_dir, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    output_filename = f"zstack_time{time_point:03d}_{timestamp}.mp4"
+
+    output_path = os.path.join(timestamp_dir, output_filename)
 
     print(f"Saving movie to: {output_path}")
     success = save_movie(frames, output_path, fps, output_size)

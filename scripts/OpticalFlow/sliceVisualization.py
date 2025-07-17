@@ -260,11 +260,11 @@ def main():
         # Perform magnitude/variance analysis
         print(f"Performing flow analysis...")
        
-        vx_3d = flow_data['vx']
-        vy_3d = flow_data['vy']   
-        vz_3d = flow_data.get('vz')
+        #vx_3d = flow_data['vx']s
+        #vy_3d = flow_data['vy']   
+        #vz_3d = flow_data.get('vz')
 
-        magnitude_map, variance_map = analyzeRegions.calculate_mag_var(vx_3d, vy_3d, vz_3d, window_size=40)
+        magnitude_map, variance_map = analyzeRegions.calculate_mag_var(vx, vy, vz, window_size=40)
         optimal_regions = analyzeRegions.find_optimal_regions(magnitude_map, variance_map, top_k=3)
         
         # Save analysis results to frame directory
