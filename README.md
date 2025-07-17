@@ -6,7 +6,7 @@ This repository provides a set of tools to generate orthogonal maximum intensity
 
 ## Getting Started
 
-### 1. Clone the repository
+### 1. Clone the dictyviz repo
 
 After cloning the repository, download the contents of the submodule:
 
@@ -29,4 +29,4 @@ conda env create -f optical3dflow_environment.yml
 conda activate optical3dflow
 ```
 ### 4. Running scripts 
-To run scripts, navigate to the right directory and run the correct bash script. 
+To run scripts, navigate to the right directory and run the correct bash script. Note: the ONLY file that needs the optical3dflow environment to be activated is when running the 3Dflow.py script with the generate3Dflow.sh bash script. 
