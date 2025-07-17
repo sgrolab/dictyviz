@@ -1,4 +1,4 @@
-# OpticalFlow3d
+# Dictyviz
 
 This repository provides a set of tools to generate orthogonal maximum intensity projections, movies from 4D zarr imaging datasets, and perform 3D optical flow analysis using a dedicated submodule.
 
