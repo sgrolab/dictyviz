@@ -8,85 +8,8 @@ import matplotlib.pyplot as plt
 import argparse
 import datetime
 import zarr 
-
-def load_flow_frame(results_dir, frame_number):
-    """Load optical flow data for a specific frame"""
-    frame_dir = os.path.join(results_dir, str(frame_number))
-    if not os.path.exists(frame_dir):
-        raise FileNotFoundError(f"Frame directory {frame_dir} does not exist")
-    
-    components = ['vx', 'vy', 'vz', 'confidence']
-    flow_data = {}
-    
-    for comp in components:
-        path = os.path.join(frame_dir, f"optical_flow_{comp}.npy")
-        if os.path.exists(path):
-            flow_data[comp] = np.load(path)
-        else:
-            print(f"Warning: {comp} missing at {path}")
-    
-    return flow_data
-
-def load_raw_data(results_dir, frame_number):
-    """Load raw image data for comparison"""
-
-    # Try to find zarr file in parent directory
-    parent_dir = os.path.dirname(results_dir)
-    zarr_files = [f for f in os.listdir(parent_dir) if f.endswith('.zarr')]
-    
-    if not zarr_files:
-        print("Warning: No zarr file found for raw data")
-        return None
-    
-    try:
-        zarr_path = os.path.join(parent_dir, zarr_files[0])
-        zarr_folder = zarr.open(zarr_path, mode='r')
-        res_array = zarr_folder['0']['0']
-        
-        if frame_number < res_array.shape[0]:
-            print(f"Loading raw data: frame {frame_number} from {zarr_path}")
-            raw_frame = np.asarray(res_array[frame_number, 0, :, :, :])
-            return raw_frame
-        else:
-            print(f"Warning: Frame {frame_number} out of bounds in raw data (max index = {res_array.shape[0]-1})")
-    except Exception as e:
-        print(f"Warning: Could not load raw data: {e}")
-    
-    return None
-
-def extract_slices(flow_data, raw_data=None, idx=None):
-    """Extract Z-slice from 3D flow data"""
-    
-    shape = flow_data['vx'].shape
-    print(f"Data shape (Z, Y, X): {shape}")
-    
-    if idx is None:
-        idx = shape[0] // 2  # Use middle slice as default
-        print(f"Using middle slice: {idx}")
-    else:
-        print(f"Using user-specified slice: {idx}")
-    
-    # Validate slice index
-    if idx >= shape[0] or idx < 0:
-        print(f"Warning: Slice {idx} out of bounds [0, {shape[0]-1}]. Using middle slice.")
-        idx = shape[0] // 2
-
-    vx = flow_data['vx'][idx, :, :]
-    vy = flow_data['vy'][idx, :, :]
-    vz = flow_data.get('vz', None)
-    
-    if vz is not None:
-        vz = vz[idx, :, :]
-    conf = flow_data.get('confidence', None)
-    if conf is not None:
-        conf = conf[idx, :, :]
-    
-    # Extract raw data slice if available
-    raw_slice = None
-    if raw_data is not None:
-        raw_slice = raw_data[idx, :, :]
-    
-    return vx, vy, vz, conf, raw_slice, idx
+import helpers.analyzeRegions as analyzeRegions
+import helpers.flowLoader as flowLoader
 
 def create_hsv_flow(vx, vy, max_flow=None):
 
@@ -109,51 +32,11 @@ def create_hsv_flow(vx, vy, max_flow=None):
     
     return rgb_flow, mag, max_flow
 
-def create_flow_color_wheel(legend_size=150):
-  
-    legend = np.zeros((legend_size, legend_size, 3), dtype=np.uint8) + 20  # dark grey background
-    
-    # Calculate center and radius
-    center_x, center_y = legend_size // 2, legend_size // 2
-    max_radius = (legend_size // 2) - 2 
-    
-    # Create the color wheel
-    for y in range(legend_size):
-        for x in range(legend_size):
-            # Calculate distance from center
-            dx, dy = x - center_x, y - center_y
-            distance = np.sqrt(dx**2 + dy**2)
-            
-            # Skip pixels outside the circle
-            if distance > max_radius:
-                continue
-            
-            # Calculate angle and normalize to 0-360 degrees
-            angle = (np.degrees(np.arctan2(-dy, dx)) + 250) % 360 
-            
-            # Normalize distance to 0-1 range for brightness
-            normalized_distance = distance / max_radius
-            
-            # Set HSV values based on angle and distance
-            hue = angle / 2  # OpenCV uses 0-180 for hue
-            saturation = 255
-            value = int(normalized_distance * 255)  # Center dimmer, edges brighter
-            
-            # Convert HSV to RGB for this pixel
-            color = cv2.cvtColor(np.uint8([[[hue, saturation, value]]]), cv2.COLOR_HSV2RGB)[0][0]
-            legend[y, x] = color
-    
-    # Add a thin border around the wheel
-    cv2.circle(legend, (center_x, center_y), max_radius, (200, 200, 200), 1)
-    
-    return legend
-
 def plot_flow(vx, vy, vz, conf, raw_slice, axis, slice_idx, frame_number, save_path=None, show_arrows=True, arrow_step=10):
     """Create comprehensive flow visualization with raw data"""
     
     # Create HSV flow visualization using OpenCV
     rgb, magnitude, max_flow = create_hsv_flow(vx, vy)
-    color_wheel = create_flow_color_wheel(150)
 
     # Create 2x3 subplot layout to include raw data
     fig, axs = plt.subplots(2, 3, figsize=(20, 12))
@@ -312,97 +195,6 @@ def plot_flow(vx, vy, vz, conf, raw_slice, axis, slice_idx, frame_number, save_p
     
     plt.close()  # Close figure to free memory
 
-# calculate the magnitude and variance of the window 
-def calculate_mag_var(vx, vy, window_size=40):
-
-    height, width = vx.shape
-    output_height = height - window_size + 1
-    output_width = width - window_size + 1
-
-    magnitude_map = np.zeros((output_height, output_width))
-    variance_map = np.zeros((output_height, output_width))  
-
-    print(f"Computing magnitude and variance maps with window size {window_size}...")
-    print(f"Output map size: {output_height} x {output_width}")
-
-    for i in range(output_height):
-        for j in range(output_width):
-            window_vx = vx[i:i+window_size , j:j+window_size]
-            window_vy = vy[i:i+window_size, j:j+window_size]
-
-            magnitude = np.sqrt(window_vx**2 + window_vy**2)
-
-            var_x = np.var(window_vx)
-            var_y = np.var(window_vy)
-            total_variance = var_x + var_y
-
-            magnitude_map[i, j] = np.mean(magnitude)  
-            variance_map[i, j] = total_variance      
-
-    return magnitude_map, variance_map
-
-def find_optimal_regions(magnitude_map, variance_map, top_k=3, suppression_radius = 35):
-    """
-    Find optimal regions with high magnitude and low variance
-    Returns list of (row, col, magnitude, variance, score) tuples
-    """
-    # normalize maps to 0-1 range
-    norm_magnitude = (magnitude_map - magnitude_map.min()) / (magnitude_map.max() - magnitude_map.min())
-    norm_variance = (variance_map - variance_map.min()) / (variance_map.max() - variance_map.min())
-
-    # score: high magnitude, low variance
-    score = norm_magnitude - norm_variance
-    results = []
-
-    used_mask = np.zeros_like(score, dtype=bool)
-
-    for i in range(top_k):
-        
-        masked_score = np.ma.array(score, mask = used_mask)
-        if masked_score.count() == 0:
-            break
-    
-        # Find highest remaining score
-        max_idx = np.unravel_index(masked_score.argmax(), score.shape)
-        row, col = max_idx
-        results.append((row, col, magnitude_map[row, col], variance_map[row, col], norm_magnitude[row, col], norm_variance[row,col], score[row, col]))
-
-        # Apply suppression mask around selected point
-        rr, cc = np.ogrid[:score.shape[0], :score.shape[1]]
-        suppression_mask = (rr - row)**2 + (cc - col)**2 <= suppression_radius**2
-        used_mask[suppression_mask] = True
-    
-    return results
-
-def save_analysis_results(magnitude_map, variance_map, optimal_regions, frame_dir, frame_number, slice_idx):
-    """
-    Save magnitude/variance analysis results to the frame directory
-    """
-    # Save magnitude and variance maps
-    np.save(os.path.join(frame_dir, "magnitude_map.npy"), magnitude_map)
-    np.save(os.path.join(frame_dir, "variance_map.npy"), variance_map)
-    
-    # Save optimal regions as text file
-    regions_file = os.path.join(frame_dir, "optimal_regions.txt")
-    with open(regions_file, 'w') as f:
-        f.write(f"Optimal Flow Regions Analysis\n")
-        f.write(f"Frame: {frame_number}, Z-slice: {slice_idx}\n")
-        f.write(f"Analysis Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-        f.write("Top regions (row, col, raw_magnitude, raw_variance, norm_magnitude, norm_variance, score):\n")
-        
-        for i, (row, col, raw_mag, raw_var, norm_magnitude, norm_variance, score) in enumerate(optimal_regions):
-            f.write(f"{i+1}. Row: {row:3d}, Col: {col:3d}, "
-                   f"Raw_Mag: {raw_mag:.4f}, Raw_Var: {raw_var:.4f}, "
-                   f"Norm_Mag: {norm_magnitude:.4f}, Norm_Var: {norm_variance:.4f}, "
-                   f"Score: {score:.4f}\n")
-    
-    print(f"✓ Analysis results saved:")
-    print(f"  - magnitude_map.npy") 
-    print(f"  - variance_map.npy") 
-    print(f"  - optimal_regions.txt")
-    
-    return regions_file
-
 def main():
     if len(sys.argv) < 3:
         print("Usage: python visualize_3D_flow.py <results_directory> <frame_number> [slice_index]")
@@ -432,18 +224,18 @@ def main():
     try:
         # Load flow data
         print("Loading optical flow data...")
-        flow_data = load_flow_frame(results_dir, frame_number)
+        flow_data = flowLoader.load_flow_frame(results_dir, frame_number)
         
         if not flow_data:
             raise ValueError("No flow data loaded")
         
         # Load raw data for comparison
         print("Loading raw image data...")
-        raw_data = load_raw_data(results_dir, frame_number)
+        raw_data = flowLoader.load_raw_data(results_dir, frame_number)
         
         # Extract slice
         print(f"Extracting Z slice...")
-        vx, vy, vz, conf, raw_slice, idx = extract_slices(
+        vx, vy, vz, conf, raw_slice, idx = flowLoader.extract_slice(
             flow_data, raw_data, idx=slice_index
         )
         
@@ -467,17 +259,25 @@ def main():
         
         # Perform magnitude/variance analysis
         print(f"Performing flow analysis...")
-        magnitude_map, variance_map = calculate_mag_var(vx, vy, window_size=50)
-        optimal_regions = find_optimal_regions(magnitude_map, variance_map, top_k=3)
+       
+        vx_3d = flow_data['vx']
+        vy_3d = flow_data['vy']   
+        vz_3d = flow_data.get('vz')
+
+        magnitude_map, variance_map = analyzeRegions.calculate_mag_var(vx_3d, vy_3d, vz_3d, window_size=40)
+        optimal_regions = analyzeRegions.find_optimal_regions(magnitude_map, variance_map, top_k=3)
         
         # Save analysis results to frame directory
-        regions_file = save_analysis_results(magnitude_map, variance_map, optimal_regions, 
+        regions_file = analyzeRegions.save_analysis_results(magnitude_map, variance_map, optimal_regions, 
                                            frame_dir, frame_number, idx)
         
         # Print summary of optimal regions
         print(f"\n✓ Flow Analysis Summary:")
-        for i, (row, col, mag, var, score) in enumerate(optimal_regions):
-            print(f"  {i+1}. Region at ({row}, {col}): Magnitude={mag:.4f}, Variance={var:.4f}, Score={score:.4f}")
+        for i, (depth, row, col, raw_mag, raw_var, norm_magnitude, norm_variance, score) in enumerate(optimal_regions):
+            print(f"{i+1}. z: {depth:3d}, y: {row:3d}, x: {col:3d}, "
+                   f"Raw_Mag: {raw_mag:.4f}, Raw_Var: {raw_var:.4f}, "
+                   f"Norm_Mag: {norm_magnitude:.4f}, Norm_Var: {norm_variance:.4f}, "
+                   f"Score: {score:.4f}\n")
         
         print(f"\n✓ Comprehensive visualization complete!")
         print(f"✓ Saved: {save_filename}")

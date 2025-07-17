@@ -46,8 +46,10 @@ def compute_3D_opticalflow(zarr_path):
 
     successful_frames = []
 
+    startingFrame = 141
+
     # Loop through consecutive frame pairs
-    for i in range(num_frames - 1):
+    for i in range(startingFrame, num_frames - 1):
         print(f"\n--- Processing frame pair {i} -> {i+1} ---")
         
         # Monitor GPU memory
