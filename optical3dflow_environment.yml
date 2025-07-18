@@ -71,4 +71,3 @@ dependencies:
       - typing-extensions==4.12.2
       - zarr==3.0.10
       - zenity==2.0.0
-prefix: /groups/sgro/home/raoa2/conda/envs/optical3dflow

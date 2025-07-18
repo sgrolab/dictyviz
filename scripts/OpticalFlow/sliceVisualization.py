@@ -257,34 +257,6 @@ def main():
         plot_flow(vx, vy, vz, conf, raw_slice, 'z', idx, frame_number,
                   save_path=save_path, show_arrows=True, arrow_step=arrow_step)
         
-        # Perform magnitude/variance analysis
-        print(f"Performing flow analysis...")
-       
-        #vx_3d = flow_data['vx']s
-        #vy_3d = flow_data['vy']   
-        #vz_3d = flow_data.get('vz')
-
-        magnitude_map, variance_map = analyzeRegions.calculate_mag_var(vx, vy, vz, window_size=40)
-        optimal_regions = analyzeRegions.find_optimal_regions(magnitude_map, variance_map, top_k=3)
-        
-        # Save analysis results to frame directory
-        regions_file = analyzeRegions.save_analysis_results(magnitude_map, variance_map, optimal_regions, 
-                                           frame_dir, frame_number, idx)
-        
-        # Print summary of optimal regions
-        print(f"\n✓ Flow Analysis Summary:")
-        for i, (depth, row, col, raw_mag, raw_var, norm_magnitude, norm_variance, score) in enumerate(optimal_regions):
-            print(f"{i+1}. z: {depth:3d}, y: {row:3d}, x: {col:3d}, "
-                   f"Raw_Mag: {raw_mag:.4f}, Raw_Var: {raw_var:.4f}, "
-                   f"Norm_Mag: {norm_magnitude:.4f}, Norm_Var: {norm_variance:.4f}, "
-                   f"Score: {score:.4f}\n")
-        
-        print(f"\n✓ Comprehensive visualization complete!")
-        print(f"✓ Saved: {save_filename}")
-        print(f"✓ Full path: {save_path}")
-        print(f"✓ Features: Raw data, HSV flow, magnitude, out-of-plane, confidence, overlay")
-        print(f"✓ Analysis saved to: {regions_file}")
-        
     except Exception as e:
         print(f"Error: {str(e)}")
         import traceback

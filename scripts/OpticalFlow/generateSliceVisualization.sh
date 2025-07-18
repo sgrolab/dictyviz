@@ -56,7 +56,7 @@ echo "Results directory: $RESULTS_DIR"
 
 # Build command with optional slice index
 if [ ! -z "$SLICE_INDEX" ]; then
-    bsub -n 8 -W 03:00 python3 sliceVisualization.py "$RESULTS_DIR" "$SELECTED_FRAME" "$SLICE_INDEX"
+    bsub -n 8 -W 12:00 python3 sliceVisualization.py "$RESULTS_DIR" "$SELECTED_FRAME" "$SLICE_INDEX"
 else
-    bsub -n 8 -W 03:00 python3 sliceVisualization.py "$RESULTS_DIR" "$SELECTED_FRAME"
+    bsub -n 8 -W 12:00 python3 sliceVisualization.py "$RESULTS_DIR" "$SELECTED_FRAME"
 fi

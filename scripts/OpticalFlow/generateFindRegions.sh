@@ -43,4 +43,5 @@ fi
 echo "Selected frame: $SELECTED_FRAME"
 echo "Results directory: $RESULTS_DIR"
 
-bsub -n 8 -W 12:00 python3 flowVisualization.py "$RESULTS_DIR" "$SELECTED_FRAME"
+
+bsub -n 6 -gpu "num=1" -q gpu_a100 -W 24:00 -J "generateFindRegions" python findRegions.py "$RESULTS_DIR" "$SELECTED_FRAME"

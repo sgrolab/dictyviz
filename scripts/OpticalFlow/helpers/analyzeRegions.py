@@ -1,43 +1,42 @@
 import os
 import numpy as np
 import datetime
-
+import torch 
+import torch.nn.functional as F 
 
 def calculate_mag_var(vx, vy, vz, window_size=40):
-    """
-    Compute 3D magnitude and variance over sliding window for each (vx, vy, vz) cube.
-    Returns 3D arrays: mean magnitude map and total variance map.
-    """
-    depth, height, width = vx.shape
-    output_height = height - window_size + 1
-    output_width = width - window_size + 1
-    output_depth = depth - window_size + 1
+    
+    # Convert to torch tensors and move to GPU
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    vx = torch.from_numpy(vx).float().to(device)
+    vy = torch.from_numpy(vy).float().to(device)
+    vz = torch.from_numpy(vz).float().to(device)
 
-    magnitude_map = np.zeros((output_depth, output_height, output_width))
-    variance_map = np.zeros((output_depth, output_height, output_width))  
+    # Compute magnitude volume
+    magnitude = torch.sqrt(vx**2 + vy**2 + vz**2)
 
-    print(f"Computing magnitude and variance maps with window size {window_size}...")
-    print(f"Output map size: {output_depth} x {output_height} x {output_width}")
+    # Add batch and channel dims
+    vx = vx.unsqueeze(0).unsqueeze(0)
+    vy = vy.unsqueeze(0).unsqueeze(0)
+    vz = vz.unsqueeze(0).unsqueeze(0)
+    magnitude = magnitude.unsqueeze(0).unsqueeze(0)
 
-    for i in range(output_depth):
-        for j in range(output_height):
-            for k in range(output_width):
-                window_vx = vx[i:i+window_size , j:j+window_size, k:k+window_size]
-                window_vy = vy[i:i+window_size, j:j+window_size, k:k+window_size]
-                window_vz = vz[i:i+window_size, j:j+window_size, k:k+window_size]
+    # Use average pooling to compute local mean
+    kernel = window_size
+    stride = 1  # Set higher (e.g., 5 or 10) to speed up
 
-                magnitude = np.sqrt(window_vx**2 + window_vy**2 + window_vz**2)
+    mean_mag = F.avg_pool3d(magnitude, kernel_size=kernel, stride=stride).squeeze()
+    
+    var_x = F.avg_pool3d(vx**2, kernel_size=kernel, stride=stride).squeeze() - \
+            (F.avg_pool3d(vx, kernel_size=kernel, stride=stride).squeeze())**2
+    var_y = F.avg_pool3d(vy**2, kernel_size=kernel, stride=stride).squeeze() - \
+            (F.avg_pool3d(vy, kernel_size=kernel, stride=stride).squeeze())**2
+    var_z = F.avg_pool3d(vz**2, kernel_size=kernel, stride=stride).squeeze() - \
+            (F.avg_pool3d(vz, kernel_size=kernel, stride=stride).squeeze())**2
 
-                var_x = np.var(window_vx)
-                var_y = np.var(window_vy)
-                var_z = np.var(window_vz)
-                total_variance = var_x + var_y + var_z
+    total_variance = var_x + var_y + var_z
 
-                magnitude_map[i, j, k] = np.mean(magnitude)  
-                variance_map[i, j, k] = total_variance      
-
-    return magnitude_map, variance_map
-
+    return mean_mag.cpu().numpy(), total_variance.cpu().numpy()
 
 def find_optimal_regions(magnitude_map, variance_map, top_k=3, suppression_radius=35):
     """
@@ -76,7 +75,7 @@ def find_optimal_regions(magnitude_map, variance_map, top_k=3, suppression_radiu
     return results
 
 
-def save_analysis_results(magnitude_map, variance_map, optimal_regions, frame_dir, frame_number, slice_idx):
+def save_analysis_results(magnitude_map, variance_map, optimal_regions, frame_dir, frame_number):
     """
     Save analysis outputs including .npy maps and a human-readable .txt summary.
     """
@@ -87,7 +86,7 @@ def save_analysis_results(magnitude_map, variance_map, optimal_regions, frame_di
     regions_file = os.path.join(frame_dir, "optimal_regions.txt")
     with open(regions_file, 'w') as f:
         f.write(f"Optimal Flow Regions Analysis\n")
-        f.write(f"Frame: {frame_number}, Z-slice: {slice_idx}\n")
+        f.write(f"Frame: {frame_number}")
         f.write(f"Analysis Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
         f.write("Top regions (z, y, x, raw_magnitude, raw_variance, norm_magnitude, norm_variance, score):\n")
 
