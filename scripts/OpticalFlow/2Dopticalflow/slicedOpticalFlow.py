@@ -1,6 +1,7 @@
 import os
 import sys
 import cv2
+import torch
 import numpy as np
 import imageio
 import datetime
@@ -288,38 +289,33 @@ def create_flow_histogram(mag, width, height):
     return hist_image
 
 # calculate the magnitude and variance of the window 
-def calculate_mag_var(vx, vy, output_dir, window_size=40):
+def calculate_mag_var(vx, vy, log_file, window_size=40):
 
-    frames, slices, height, width = vx.shape
-    output_height = height - window_size + 1
-    output_width = width - window_size + 1
-
-    magnitude_map = np.zeros((frames, slices, output_height, output_width))
-    variance_map = np.zeros((frames, slices, output_height, output_width))  
-
-    print(f"Computing magnitude and variance maps with window size {window_size}...")
-
-    for frame in range(frames):
-        print(f"Processing frame {frame+1}/{frames}...")
-        for slice_nb in range(slices):
-            print(f"  Processing slice {slice_nb+1}/{slices}...")
-            for i, j in np.ndindex(output_height, output_width):
-                window_vx = vx[frame][slice_nb][i:i+window_size , j:j+window_size]
-                window_vy = vy[frame][slice_nb][i:i+window_size, j:j+window_size]
-
-                magnitude = np.sqrt(window_vx**2 + window_vy**2)
-
-                var_x = np.var(window_vx)
-                var_y = np.var(window_vy)
-                total_variance = var_x + var_y
-
-                magnitude_map[frame][slice_nb][i][j] = np.mean(magnitude)  
-                variance_map[frame][slice_nb][i][j] = total_variance    
-
-    # save the maps as numpy files
-    np.save(os.path.join(output_dir, "magnitude_map.npy"), magnitude_map)
-    np.save(os.path.join(output_dir, "variance_map.npy"), variance_map)
-
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}", file=log_file)
+    
+    # Convert to torch tensors
+    vx_torch = torch.from_numpy(vx).float().to(device)
+    vy_torch = torch.from_numpy(vy).float().to(device)
+    
+    magnitude = torch.sqrt(vx_torch**2 + vy_torch**2)
+    
+    # Use unfold to create sliding windows
+    # unfold(dim, size, step) creates sliding windows
+    vx_windows = vx_torch.unfold(2, window_size, 1).unfold(3, window_size, 1)  # shape: (frames, slices, out_h, out_w, win_h, win_w)
+    vy_windows = vy_torch.unfold(2, window_size, 1).unfold(3, window_size, 1)
+    mag_windows = magnitude.unfold(2, window_size, 1).unfold(3, window_size, 1)
+    
+    # Calculate variance and mean over the window dimensions (last 2 dims)
+    var_x = torch.var(vx_windows, dim=(-2, -1))
+    var_y = torch.var(vy_windows, dim=(-2, -1))
+    total_variance = var_x + var_y
+    mean_magnitude = torch.mean(mag_windows, dim=(-2, -1))
+    
+    # Move back to CPU and convert to numpy
+    magnitude_map = mean_magnitude.cpu().numpy()
+    variance_map = total_variance.cpu().numpy()
+    
     return magnitude_map, variance_map
 
 def find_optimal_regions(magnitude_map, variance_map, top_k=5, suppression_radius = 35):
@@ -493,7 +489,11 @@ def main():
                 vx = flow_raw[..., 0]
                 vy = flow_raw[..., 1]
 
-                magnitude_map, variance_map = calculate_mag_var(vx, vy, output_dir, window_size=40)
+                magnitude_map, variance_map = calculate_mag_var(vx, vy, f, window_size=40)
+
+                # save the magnitude and variance maps
+                np.save(os.path.join(output_dir, "magnitude_map.npy"), magnitude_map)
+                np.save(os.path.join(output_dir, "variance_map.npy"), variance_map)
 
             print("finding optimal regions...", file=f)
             optimal_regions  = find_optimal_regions(magnitude_map, variance_map, top_k=5, suppression_radius=35)
