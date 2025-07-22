@@ -114,9 +114,11 @@ def calcMaxProjections(root, maxProjectionsRoot, res_lvl=0):
             maxX[i,j] = np.max(frame,axis=2)
             maxY[i,j] = np.max(frame,axis=1)  
 
-def calcOpticalFlowMaxProjections(flow_dir, maxProjectionsRoot):
+def calcOpticalFlowMaxProjections(maxProjectionsRoot):
 
     """Create max projections specifically from optical flow RGBM (rgb and magnitude) arrays"""
+
+    flow_results_dir = '/Volumes/sgrolab/jennifer/cryolite/cryolite_mixin_test53_2025-02-22/optical_flow_3Dresults'
 
     #if cropping, get crop parameters from parameters.json and redefine resArray
     cropDims = getCroppingDimsFromJSON(maxProjectionsRoot.store.path + '/../../parameters.json')
@@ -124,7 +126,7 @@ def calcOpticalFlowMaxProjections(flow_dir, maxProjectionsRoot):
         resArray = resArray[:, :, cropDims[2][0]:cropDims[2][1], cropDims[1][0]:cropDims[1][1], cropDims[0][0]:cropDims[0][1]]
 
     # get dataset dimensions
-    lenT, lenZ, lenY, lenX = resArray.shape
+    lenT, lenCh, lenZ, lenY, lenX = resArray.shape
 
     # Create zarr arrays for optical flow RGBM max projections
     flowMaxZ = maxProjectionsRoot.zeros('flow_maxz', shape=(lenT, 4, lenY, lenX), chunks=(1, 4, lenY, lenX))
@@ -132,8 +134,14 @@ def calcOpticalFlowMaxProjections(flow_dir, maxProjectionsRoot):
     flowMaxY = maxProjectionsRoot.zeros('flow_maxy', shape=(lenT, 4, lenZ, lenX), chunks=(1, 4, lenZ, lenX))
 
     # iterate through each timepoint and compute max projections
-    for i in tqdm(range(lenT)):
-        rgbm_data = np.load(flow_rbm_file)
+    for i, frame_num in enumerate(tqdm(lenT)):
+        frame_dir = os.path.join(flow_results_dir, str(frame_num))
+        rgbm_file = os.path.join(frame_dir, "optical_flow_rgbm.npy")
+        
+        if os.path.exists(rgbm_file):
+            # Load RGBM data: (Z, Y, X, 4) where 4 = [Red, Green, Blue, Magnitude]
+            rgbm_data = np.load(rgbm_file)
+
         for j in range(4):
             channel_data = rgbm_data[:, :, :, j]  # (Z, Y, X)
     

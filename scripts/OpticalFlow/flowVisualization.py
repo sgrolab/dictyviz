@@ -5,7 +5,7 @@ import helpers.flowLoader as flowLoader
 from tqdm import tqdm
 
 def main():
-    
+
     results_dir = sys.argv[1]
     
     # Discover all available frames in the results directory
@@ -15,8 +15,8 @@ def main():
             frame_path = os.path.join(results_dir, item)
             if os.path.isdir(frame_path):
                 # Check if this frame has flow data files
-                vx_file = os.path.join(frame_path, "vx.npy")
-                vy_file = os.path.join(frame_path, "vy.npy")
+                vx_file = os.path.join(frame_path, "optical_flow_vx.npy")
+                vy_file = os.path.join(frame_path, "optical_flow_vx.npy")
                 if os.path.exists(vx_file) and os.path.exists(vy_file):
                     available_frames.append(int(item))
     
