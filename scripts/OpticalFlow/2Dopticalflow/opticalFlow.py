@@ -15,7 +15,7 @@ def enhance_cell_contrast(frame):
         return clahe.apply(frame)
 
 # function to compute farneback optical flow
-def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
+def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file, params):
     
     parent_dir = os.path.dirname(zarr_path)
 
@@ -62,26 +62,17 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
 
         curr_frame = cv2.bilateralFilter(curr_frame, d=5, sigmaColor=35, sigmaSpace=5)
 
-        if frame_index > num_frames * 0.6:  # in the last 40% of frames
-            # use parameters optimized for larger movements
-            flow = cv2.calcOpticalFlowFarneback(
+        flow = cv2.calcOpticalFlowFarneback(
                 prev=prev_frame, next=curr_frame, flow=None,
-                pyr_scale=0.4, levels=7,      # Fewer levels to focus on larger structures
-                winsize=15,                   # Larger window for capturing group movements
-                iterations=10,                # More iterations for accuracy
-                poly_n=7,                     # Larger neighborhood for group behavior
-                poly_sigma=1.5,               # Higher sigma for smoother group flow
+                pyr_scale=params['pyr_scale'],
+                levels=params['levels'],
+                winsize=params['winsize'],
+                iterations=params['iterations'],
+                poly_n=params['poly_n'],
+                poly_sigma=params['poly_sigma'],
                 flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
             )
-        else:
-            # standard parameters for early frames
-            flow = cv2.calcOpticalFlowFarneback(
-                prev=prev_frame, next=curr_frame, flow=None,
-                pyr_scale=0.5, levels=10, winsize=7,
-                iterations=8, poly_n=5, poly_sigma=1.1, 
-                flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
-            )
-
+        
         # adds temporal smoothing to help reduce flickering between frames
         if prev_flow is not None:
             alpha = 0.7  # weight for current flow (0.7 current + 0.3 previous)

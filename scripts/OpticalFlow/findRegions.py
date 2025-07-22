@@ -24,7 +24,7 @@ def main():
     vx_3d = flow_data['vx']
     vy_3d = flow_data['vy']   
     vz_3d = flow_data.get('vz')
-
+    
     # Calculate magnitude and variance
     magnitude_map, variance_map = analyzeRegions.calculate_mag_var(vx_3d, vy_3d, vz_3d, window_size=40)
 
