@@ -38,6 +38,21 @@ def get_cross_platform_settings():
             'additional_flags': ['-movflags', '+faststart']
         }
 
+def sanitize_filename(filename):
+    """Remove or replace characters that are problematic in filenames"""
+    # Remove file extension and path
+    name = os.path.splitext(os.path.basename(filename))[0]
+    # Replace problematic characters with underscores
+    problematic_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|', ' ']
+    for char in problematic_chars:
+        name = name.replace(char, '_')
+    # Remove multiple consecutive underscores
+    while '__' in name:
+        name = name.replace('__', '_')
+    # Remove leading/trailing underscores
+    name = name.strip('_')
+    return name
+
 def combine_movies(xy_movie, opticalflow_movie, output_path):
     # gets dimensions of both videos
     xy_w, xy_h = get_video_dimensions(xy_movie)
@@ -146,13 +161,25 @@ if __name__ == "__main__":
         base_name = os.path.splitext(args.output)[0]
         output_filename = base_name + settings['extension']
     else:
-        output_filename = f"combined_movie{settings['extension']}"
+        # Create descriptive filename with both input movie names
+        xy_name = sanitize_filename(args.xy_movie)
+        flow_name = sanitize_filename(args.opticalflow_movie)
+        
+        # Truncate names if they're too long to avoid overly long filenames
+        max_name_length = 20
+        if len(xy_name) > max_name_length:
+            xy_name = xy_name[:max_name_length]
+        if len(flow_name) > max_name_length:
+            flow_name = flow_name[:max_name_length]
+        
+        output_filename = f"combined_{xy_name}_plus_{flow_name}{settings['extension']}"
     
     output_path = os.path.join(output_dir, output_filename)
 
     # Print system info
     print(f"Detected system: {platform.system()}")
     print(f"Output format: {settings['extension']} with {settings['codec']} codec")
+    print(f"Output filename: {output_filename}")
 
     # combine movies
     if os.path.isfile(args.xy_movie) and os.path.isfile(args.opticalflow_movie):

@@ -8,7 +8,6 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"  # prevents memo
 import opticalflow3D
 import sys
 import numpy as np
-import datetime
 import zarr
 import torch
 import logging
@@ -16,11 +15,20 @@ import logging
 def compute_3D_opticalflow(zarr_path):
 
     parent_dir = os.path.dirname(zarr_path)
-    output_dir = os.path.join(parent_dir, "optical_flow_3Dresults")
+    
+    # Extract zarr file/directory name for naming convention
+    zarr_name = os.path.basename(zarr_path)
+    # Remove .zarr extension if present
+    if zarr_name.endswith('.zarr'):
+        zarr_name = zarr_name[:-5]
+    
+    zarr_name_short = zarr_name[-13:]
+    
+    # Create output directory with zarr name included
+    output_dir = os.path.join(parent_dir, f"{zarr_name_short}_optical_flow_3Dresults")
 
     # create main output directory
     os.makedirs(output_dir, exist_ok=True)
-
     log_file = os.path.join(output_dir, "gpu_usage.log")
 
     #setting up logging
