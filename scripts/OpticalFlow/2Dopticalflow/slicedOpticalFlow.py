@@ -170,7 +170,7 @@ def make_movie(output_dir, fps=10):
         final_frame = rgb_flow.copy()
 
         # create and add the legend to each frame 
-        legend = create_flow_color_wheel(width, height)
+        legend = create_flow_color_wheel(width, height*num_slices)
         legend_h, legend_w = legend.shape[:2]
 
         # position in bottom right with padding
