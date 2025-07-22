@@ -5,6 +5,7 @@ import helpers.flowLoader as flowLoader
 from tqdm import tqdm
 
 def main():
+    
     results_dir = sys.argv[1]
     
     # Discover all available frames in the results directory
