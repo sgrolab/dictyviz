@@ -63,15 +63,50 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file, para
         curr_frame = cv2.bilateralFilter(curr_frame, d=5, sigmaColor=35, sigmaSpace=5)
 
         flow = cv2.calcOpticalFlowFarneback(
-                prev=prev_frame, next=curr_frame, flow=None,
-                pyr_scale=params['pyr_scale'],
-                levels=params['levels'],
-                winsize=params['winsize'],
-                iterations=params['iterations'],
-                poly_n=params['poly_n'],
-                poly_sigma=params['poly_sigma'],
-                flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
-            )
+            prev=prev_frame, next=curr_frame, flow=None,
+            
+            # pyr_scale: Image pyramid scaling factor (0.1 to 0.99)
+            # - Higher values (0.7-0.9): Faster computation, captures large motions better, less detail
+            # - Lower values (0.3-0.5): Slower computation, captures fine details better, may miss large motions
+            # - 0.5 means each pyramid level is half the size of the previous level
+            pyr_scale=params['pyr_scale'],
+            
+            # levels: Number of pyramid levels (1-20+)
+            # - More levels: Better handling of large motions, slower computation
+            # - Fewer levels: Faster computation, may miss large displacements
+            # - Each level processes the image at different resolutions
+            levels=params['levels'],
+            
+            # winsize: Averaging window size in pixels (odd numbers: 5, 7, 9, 11, 15, etc.)
+            # - Larger windows (11-15): More robust to noise, smoother flow, less spatial detail
+            # - Smaller windows (5-7): More spatial detail, more sensitive to noise
+            # - Must be odd number, represents neighborhood size for flow calculation
+            winsize=params['winsize'],
+            
+            # iterations: Number of iterations at each pyramid level (3-15)
+            # - More iterations: More accurate flow estimation, slower computation
+            # - Fewer iterations: Faster computation, potentially less accurate
+            # - Algorithm refines flow estimate this many times per level
+            iterations=params['iterations'],
+            
+            # poly_n: Size of pixel neighborhood for polynomial expansion (3, 5, or 7)
+            # - 3: Fastest, least accurate, good for small motions
+            # - 5: Balanced speed/accuracy (most common choice)
+            # - 7: Slowest, most accurate, good for complex motions
+            # - Determines complexity of motion model fitted to each pixel
+            poly_n=params['poly_n'],
+            
+            # poly_sigma: Standard deviation of Gaussian used to smooth derivatives (0.8-2.0)
+            # - Lower values (0.8-1.0): Preserves sharp edges, more noise sensitive
+            # - Higher values (1.2-1.5): Smoother derivatives, more noise robust
+            # - Controls smoothing applied before polynomial fitting
+            poly_sigma=params['poly_sigma'],
+            
+            # flags: Algorithm behavior flags
+            # - OPTFLOW_FARNEBACK_GAUSSIAN: Use Gaussian weighting (recommended)
+            # - Can combine with other flags using bitwise OR (|)
+            flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
+    )
         
         # adds temporal smoothing to help reduce flickering between frames
         if prev_flow is not None:

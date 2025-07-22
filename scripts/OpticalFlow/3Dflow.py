@@ -46,10 +46,8 @@ def compute_3D_opticalflow(zarr_path):
 
     successful_frames = []
 
-    startingFrame = 141
-
     # Loop through consecutive frame pairs
-    for i in range(startingFrame, num_frames - 1):
+    for i in range(num_frames - 1):
         print(f"\n--- Processing frame pair {i} -> {i+1} ---")
         
         # Monitor GPU memory
@@ -77,11 +75,11 @@ def compute_3D_opticalflow(zarr_path):
             output_vz, output_vy, output_vx, output_confidence = farneback.calculate_flow(
                 frame1_np, frame2_np, 
                 start_point=(0, 0, 0),
-                total_vol=(217, 1906, 1440),
-                sub_volume=(128, 192, 192),
-                overlap=(16, 24, 24),
+                total_vol=(211, 512, 512),
+                sub_volume=(64, 128, 128),
+                overlap=(16, 32, 32),
             )
-            
+
             print(f"Output tensors - vz: {output_vz.shape}, vy: {output_vy.shape}, vx: {output_vx.shape}, conf: {output_confidence.shape}")
             print(f"Output types - vz: {type(output_vz)}, vy: {type(output_vy)}, vx: {type(output_vx)}, conf: {type(output_confidence)}")
             
