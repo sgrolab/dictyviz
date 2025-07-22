@@ -535,25 +535,23 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
         vid.release()
         cv2.destroyAllWindows()
 
-def makeOrthoMaxOpticalFlowVideo(root, channel, cmap, ext='.avi'):
+def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
 
     """Generates an optical flow orthomax video"""
 
-    filename = generateUniqueFilename(channel.name + '_orthomax_' + cmap, ext)
-    nChannel = channel.nChannel
+    filename = generateUniqueFilename(channel.name + '_optical_flow_orthomax_', ext)
     voxelDims = channel.voxelDims
-    scaleMax = channel.scaleMax
-    scaleMin = channel.scaleMin
-    gamma = channel.gamma
 
     imagingFreq = getImagingFreqFromJSON(root.store.path + '/../../parameters.json')
 
-    # TODO: change root to max_projections root
-    maxZ = root['maxz']
-    maxY = root['maxy']
-    maxX = root['maxx']
+    flowMaxZ = root['flow_maxz'] # (T,4,Y,X)
+    flowMaxY = root['flow_maxy']
+    flowMaxX = root['flow_maxx']
     
-    lenT, lenZ, lenY, lenX = getProjectionDimensions(root)
+    lenT = flowMaxZ.shape[0]
+    lenZ = flowMaxX.shape[2]
+    lenY = flowMaxZ.shape[2]
+    lenX = flowMaxZ.shape[3]
 
     # calc scaled Z dimension
     zToXYRatio = voxelDims[2]/voxelDims[0]
@@ -563,12 +561,6 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, cmap, ext='.avi'):
 
     movieWidth = lenX + scaledLenZ + gap
     movieHeight = lenY + scaledLenZ + gap
-
-    # calc scaleMin, scaleMax, and gamma if not provided
-    if scaleMin == "None" or scaleMax == "None":
-        scaleMin, scaleMax = calcAutoContrast(maxZ, nChannel)
-    if gamma == "None":
-        gamma = 1
 
     # define scale bars
     scaleBarLength = getScaleBarLength(root, channel.voxelDims)
@@ -594,25 +586,64 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, cmap, ext='.avi'):
     try: 
         for i in tqdm(range(lenT)):
 
-            # initialize frame 
-            im = np.zeros([movieHeight,movieWidth])
+            # Initialize RGB frame 
+            frame = np.zeros([movieHeight, movieWidth, 3], dtype=np.uint8)
 
-            # copy max projections 
-            imXZ = copy.copy(np.flip(maxY[i,nChannel],axis=0))
-            im[0:scaledLenZ,0:lenX] = scaleXZYZ(imXZ, zToXYRatio)
-            im[(scaledLenZ+gap):movieHeight,0:lenX] = copy.copy(maxZ[i,nChannel,0])
-            imYZ = copy.copy(maxX[i,nChannel])
-            im[(scaledLenZ+gap):movieHeight,(lenX+gap):movieWidth] = np.transpose(scaleXZYZ(imYZ, zToXYRatio))
+            # Extract RGBM channels for this timepoint
+            red_xy = flowMaxZ[i, 0]     # (Y, X)
+            green_xy = flowMaxZ[i, 1]   # (Y, X) 
+            blue_xy = flowMaxZ[i, 2]    # (Y, X)
             
-            contrastedIm = adjustContrast(im, scaleMax, scaleMin, gamma)
+            red_xz = flowMaxY[i, 0]     # (Z, X)
+            green_xz = flowMaxY[i, 1]   # (Z, X)
+            blue_xz = flowMaxY[i, 2]    # (Z, X)
+            
+            red_yz = flowMaxX[i, 0]     # (Z, Y)
+            green_yz = flowMaxX[i, 1]   # (Z, Y)
+            blue_yz = flowMaxX[i, 2]    # (Z, Y)
 
-            # invert if rock channel
-            if channel.invertChannel:
-                contrastedIm = 255 - contrastedIm
+            # Scale values from [0,1] to [0,255] for display
+            red_xy = np.clip(red_xy * 255, 0, 255).astype(np.uint8)
+            green_xy = np.clip(green_xy * 255, 0, 255).astype(np.uint8)
+            blue_xy = np.clip(blue_xy * 255, 0, 255).astype(np.uint8)
+            
+            red_xz = np.clip(red_xz * 255, 0, 255).astype(np.uint8)
+            green_xz = np.clip(green_xz * 255, 0, 255).astype(np.uint8)
+            blue_xz = np.clip(blue_xz * 255, 0, 255).astype(np.uint8)
+            
+            red_yz = np.clip(red_yz * 255, 0, 255).astype(np.uint8)
+            green_yz = np.clip(green_yz * 255, 0, 255).astype(np.uint8)
+            blue_yz = np.clip(blue_yz * 255, 0, 255).astype(np.uint8)
 
-            frame = cv2.applyColorMap(contrastedIm,cmapy.cmap(cmap))
+            # Create RGB images for each projection
+            rgb_xy = np.stack([blue_xy, green_xy, red_xy], axis=-1)  # BGR for OpenCV
+            frame[(scaledLenZ+gap):movieHeight, 0:lenX] = rgb_xy
 
-            frame[np.where(im==0)] = [0,0,0]
+            # XZ projection (top) - scale and flip
+            rgb_xz = np.stack([blue_xz, green_xz, red_xz], axis=-1)
+            rgb_xz_flipped = np.flip(rgb_xz, axis=0)
+            rgb_xz_scaled = np.zeros((scaledLenZ, lenX, 3), dtype=np.uint8)
+            
+            for z in range(lenZ):
+                z_start = int(z * zToXYRatio)
+                z_end = min(int((z + 1) * zToXYRatio), scaledLenZ)
+                if z_start < scaledLenZ:
+                    rgb_xz_scaled[z_start:z_end, :] = rgb_xz_flipped[z]
+            
+            frame[0:scaledLenZ, 0:lenX] = rgb_xz_scaled
+
+            # YZ projection (bottom right) - scale and transpose
+            rgb_yz = np.stack([blue_yz, green_yz, red_yz], axis=-1)
+            rgb_yz_scaled = np.zeros((scaledLenZ, lenY, 3), dtype=np.uint8)
+            
+            for z in range(lenZ):
+                z_start = int(z * zToXYRatio)
+                z_end = min(int((z + 1) * zToXYRatio), scaledLenZ)
+                if z_start < scaledLenZ:
+                    rgb_yz_scaled[z_start:z_end, :] = rgb_yz[z]
+            
+            rgb_yz_transposed = np.transpose(rgb_yz_scaled, (1, 0, 2))
+            frame[(scaledLenZ+gap):movieHeight, (lenX+gap):movieWidth] = rgb_yz_transposed
 
             # add scale bars
             frame = scaleBarXY._addScaleBar(frame)
@@ -626,9 +657,13 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, cmap, ext='.avi'):
             # write frame 
             vid.write(frame)
 
+        # Close video after all frames are written
         vid.release()
         cv2.destroyAllWindows()
-    except:
+        print(f"✓ Optical flow orthomax video saved: {filename}")
+
+    except Exception as e:
+        print(f"Error creating optical flow video: {e}")
         vid.release()
         cv2.destroyAllWindows()
 
