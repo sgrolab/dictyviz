@@ -83,9 +83,9 @@ def compute_3D_opticalflow(zarr_path):
             output_vz, output_vy, output_vx, output_confidence = farneback.calculate_flow(
                 frame1_np, frame2_np, 
                 start_point=(0, 0, 0),
-                total_vol=(211, 512, 512),
-                sub_volume=(64, 128, 128),
-                overlap=(16, 32, 32),
+                total_vol=(217, 1906, 1440),
+                sub_volume=(96, 192, 192),
+                overlap=(48, 96, 96),
             )
 
             print(f"Output tensors - vz: {output_vz.shape}, vy: {output_vy.shape}, vx: {output_vx.shape}, conf: {output_confidence.shape}")

@@ -619,7 +619,7 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
             rgb_xy = np.stack([blue_xy, green_xy, red_xy], axis=-1)  # BGR for OpenCV
             frame[(scaledLenZ+gap):movieHeight, 0:lenX] = rgb_xy
 
-            # XZ projection (top) - scale and flip
+            # XZ projection (top) - scale and flip 
             rgb_xz = np.stack([blue_xz, green_xz, red_xz], axis=-1)
             rgb_xz_flipped = np.flip(rgb_xz, axis=0)
             rgb_xz_scaled = np.zeros((scaledLenZ, lenX, 3), dtype=np.uint8)

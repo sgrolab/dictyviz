@@ -6,9 +6,7 @@ import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend for cluster
 import matplotlib.pyplot as plt
 import argparse
-import datetime
 import zarr 
-import helpers.analyzeRegions as analyzeRegions
 import helpers.flowLoader as flowLoader
 
 def create_hsv_flow(vx, vy, max_flow=None):
@@ -241,9 +239,8 @@ def main():
         
         # Create output filename in the frame directory
         frame_dir = os.path.join(results_dir, str(frame_number))
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         slice_type = "custom" if slice_index is not None else "middle"
-        save_filename = f"flow_visualization_frame{frame_number}_z{idx}_{slice_type}_{timestamp}.png"
+        save_filename = f"flow_visualization_slice_{idx}.png"
         save_path = os.path.join(frame_dir, save_filename)
         
         print(f"Generating comprehensive visualization...")
