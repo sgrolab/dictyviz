@@ -54,7 +54,7 @@ def compute_3D_opticalflow(zarr_path):
 
     successful_frames = []
 
-    startingFrame = 91 
+    startingFrame = 91
 
     # Loop through consecutive frame pairs
     for i in range(startingFrame, num_frames - 1):
@@ -80,15 +80,21 @@ def compute_3D_opticalflow(zarr_path):
         
         print(f"Input arrays - frame1_np: {frame1_np.shape}, frame2_np: {frame2_np.shape}")
         
+        # Dynamically set total_vol, sub_volume, and overlap
+        total_vol = frame1_np.shape
+        sub_volume = tuple(max(1, s // 4) for s in total_vol)  # 1/4 of each dimension, at least 1
+        overlap = tuple(max(1, sv // 2) for sv in sub_volume)  # 1/2 of sub_volume, at least 1
+
+
         try:
             # Calculate optical flow between consecutive frames
             output_vz, output_vy, output_vx, output_confidence = farneback.calculate_flow(
                 frame1_np, frame2_np, 
                 start_point=(0, 0, 0),
-                total_vol=(216, 1906, 1440),
-                sub_volume=(64, 127, 120),
-                overlap=(45, 95, 90),
-            )
+                total_vol=total_vol,
+                sub_volume=sub_volume,
+                overlap=overlap,
+            )   
 
             print(f"Output tensors - vz: {output_vz.shape}, vy: {output_vy.shape}, vx: {output_vx.shape}, conf: {output_confidence.shape}")
             print(f"Output types - vz: {type(output_vz)}, vy: {type(output_vy)}, vx: {type(output_vx)}, conf: {type(output_confidence)}")
