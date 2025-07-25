@@ -114,40 +114,113 @@ def calcMaxProjections(root, maxProjectionsRoot, res_lvl=0):
             maxX[i,j] = np.max(frame,axis=2)
             maxY[i,j] = np.max(frame,axis=1)  
 
-def calcOpticalFlowMaxProjections(maxProjectionsRoot):
-
+def calcOpticalFlowMaxProjections(maxProjectionsRoot, opticalFolder, cropID=''):
     """Create max projections specifically from optical flow RGBM (rgb and magnitude) arrays"""
-
-    flow_results_dir = '/Volumes/sgrolab/jennifer/cryolite/cryolite_mixin_test53_2025-02-22/optical_flow_3Dresults'
-
-    #if cropping, get crop parameters from parameters.json and redefine resArray
-    cropDims = getCroppingDimsFromJSON(maxProjectionsRoot.store.path + '/../../parameters.json')
+    
+    print(f"🔍 Looking for optical flow data in: {opticalFolder}")
+    
+    # Find all frame directories
+    frame_dirs = []
+    if os.path.exists(opticalFolder):
+        for item in os.listdir(opticalFolder):
+            item_path = os.path.join(opticalFolder, item)
+            if os.path.isdir(item_path) and item.isdigit():
+                frame_dirs.append(int(item))
+    
+    if not frame_dirs:
+        print(f"No frame directories found in {opticalFolder}")
+        return
+    
+    frame_dirs.sort()
+    print(f"📊 Found {len(frame_dirs)} frames: {frame_dirs[:5]}{'...' if len(frame_dirs) > 5 else ''}")
+    
+    # Get dimensions from first available RGBM file
+    sample_frame = frame_dirs[0]
+    sample_rgbm_file = os.path.join(opticalFolder, str(sample_frame), "optical_flow_rgbm.npy")
+    
+    if not os.path.exists(sample_rgbm_file):
+        print(f"Sample RGBM file not found: {sample_rgbm_file}")
+        return
+    
+    # Load sample to get dimensions
+    sample_rgbm = np.load(sample_rgbm_file)
+    lenZ, lenY, lenX, num_channels = sample_rgbm.shape
+    lenT = len(frame_dirs)
+    
+    print(f"📐 Dataset dimensions:")
+    print(f"   Frames (T): {lenT}")
+    print(f"   Z-slices: {lenZ}")
+    print(f"   Y: {lenY}")
+    print(f"   X: {lenX}")
+    print(f"   Channels: {num_channels} (RGBM)")
+    
+    # Check for cropping parameters
+    parentDir = os.path.dirname(opticalFolder)
+    cropDims = getCroppingDimsFromJSON(os.path.join(parentDir, 'parameters.json'))
     if cropDims:
-        resArray = resArray[:, :, cropDims[2][0]:cropDims[2][1], cropDims[1][0]:cropDims[1][1], cropDims[0][0]:cropDims[0][1]]
-
-    # get dataset dimensions
-    lenT, lenCh, lenZ, lenY, lenX = resArray.shape
-
+        print(f"🔧 Applying cropping: {cropDims}")
+        lenZ = cropDims[2][1] - cropDims[2][0]
+        lenY = cropDims[1][1] - cropDims[1][0]
+        lenX = cropDims[0][1] - cropDims[0][0]
+        print(f"📐 Cropped dimensions: Z={lenZ}, Y={lenY}, X={lenX}")
+    
     # Create zarr arrays for optical flow RGBM max projections
-    flowMaxZ = maxProjectionsRoot.zeros('flow_maxz', shape=(lenT, 4, lenY, lenX), chunks=(1, 4, lenY, lenX))
-    flowMaxX = maxProjectionsRoot.zeros('flow_maxx', shape=(lenT, 4, lenZ, lenY), chunks=(1, 4, lenZ, lenY))
-    flowMaxY = maxProjectionsRoot.zeros('flow_maxy', shape=(lenT, 4, lenZ, lenX), chunks=(1, 4, lenZ, lenX))
-
-    # iterate through each timepoint and compute max projections
-    for i, frame_num in enumerate(tqdm(lenT)):
-        frame_dir = os.path.join(flow_results_dir, str(frame_num))
+    print("📝 Creating zarr arrays for max projections...")
+    
+    flowMaxZ = maxProjectionsRoot.zeros('flow_maxz', shape=(lenT, 4, lenY, lenX), 
+                                       chunks=(1, 4, lenY, lenX))
+    flowMaxX = maxProjectionsRoot.zeros('flow_maxx', shape=(lenT, 4, lenZ, lenY), 
+                                       chunks=(1, 4, lenZ, lenY))
+    flowMaxY = maxProjectionsRoot.zeros('flow_maxy', shape=(lenT, 4, lenZ, lenX), 
+                                       chunks=(1, 4, lenZ, lenX))
+    
+    print("Zarr arrays created successfully")
+    
+    # Iterate through each timepoint and compute max projections
+    print("🎨 Computing max projections...")
+    
+    for i, frame_num in enumerate(tqdm(frame_dirs, desc="Processing frames")):
+        frame_dir = os.path.join(opticalFolder, str(frame_num))
         rgbm_file = os.path.join(frame_dir, "optical_flow_rgbm.npy")
         
         if os.path.exists(rgbm_file):
-            # Load RGBM data: (Z, Y, X, 4) where 4 = [Red, Green, Blue, Magnitude]
-            rgbm_data = np.load(rgbm_file)
-
-        for j in range(4):
-            channel_data = rgbm_data[:, :, :, j]  # (Z, Y, X)
+            try:
+                # Load RGBM data: (Z, Y, X, 4) where 4 = [Red, Green, Blue, Magnitude]
+                rgbm_data = np.load(rgbm_file)
+                
+                # Apply cropping if specified
+                if cropDims:
+                    rgbm_data = rgbm_data[cropDims[2][0]:cropDims[2][1], 
+                                         cropDims[1][0]:cropDims[1][1], 
+                                         cropDims[0][0]:cropDims[0][1], :]
+                
+                # Compute max projections for each channel (R, G, B, M)
+                for j in range(4):
+                    channel_data = rgbm_data[:, :, :, j]  # (Z, Y, X)
+                    
+                    # Max projections along each axis
+                    flowMaxZ[i, j] = np.max(channel_data, axis=0)  # (Y, X) - along Z
+                    flowMaxX[i, j] = np.max(channel_data, axis=2)  # (Z, Y) - along X
+                    flowMaxY[i, j] = np.max(channel_data, axis=1)  # (Z, X) - along Y
+                    
+            except Exception as e:
+                print(f"Error processing frame {frame_num}: {e}")
+                # Fill with zeros for this frame
+                flowMaxZ[i, :] = 0
+                flowMaxX[i, :] = 0
+                flowMaxY[i, :] = 0
+        else:
+            print(f"RGBM file not found for frame {frame_num}")
+            # Fill with zeros for this frame
+            flowMaxZ[i, :] = 0
+            flowMaxX[i, :] = 0
+            flowMaxY[i, :] = 0
     
-            flowMaxZ[i, j] = np.max(channel_data, axis=0)  # (Y, X)
-            flowMaxX[i, j] = np.max(channel_data, axis=2)  # (Z, Y) 
-            flowMaxY[i, j] = np.max(channel_data, axis=1)  # (Z, X)
+    print("Optical flow max projections completed!")
+    print(f"Created arrays:")
+    print(f"   flow_maxz: {flowMaxZ.shape}")
+    print(f"   flow_maxx: {flowMaxX.shape}")
+    print(f"   flow_maxy: {flowMaxY.shape}")
 
 def calcMaxs(resArray, i, j, maxZ, maxX, maxY):
     frame = resArray[i, j, :, :, :]
@@ -535,18 +608,39 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
         vid.release()
         cv2.destroyAllWindows()
 
-def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
+def scaleXZYZ_RGB(im, zToXYRatio):
+    """RGB version of scaleXZYZ for 3-channel optical flow images"""
+    if len(im.shape) == 2:
+        # Handle grayscale case (shouldn't happen for optical flow, but just in case)
+        return scaleXZYZ(im, zToXYRatio)
+    
+    # Handle RGB case
+    scaledHeight = int(round(im.shape[0] * zToXYRatio))
+    scaledIm = np.zeros([scaledHeight, im.shape[1], 3], dtype=np.uint8)
+    
+    for i in range(im.shape[0]):
+        start = int(round(i * zToXYRatio))
+        end = int(round((i + 1) * zToXYRatio))
+        if start < scaledHeight:
+            end = min(end, scaledHeight)
+            scaledIm[start:end, :, :] = im[i, :, :]
+    
+    return scaledIm
 
-    """Generates an optical flow orthomax video"""
+def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
+    """Generates an optical flow orthomax video with proper layout"""
 
     filename = generateUniqueFilename(channel.name + '_optical_flow_orthomax_', ext)
     voxelDims = channel.voxelDims
 
-    imagingFreq = getImagingFreqFromJSON(root.store.path + '/../../parameters.json')
+    try:
+        imagingFreq = getImagingFreqFromJSON(root.store.path + '/../../parameters.json')
+    except:
+        imagingFreq = 1
 
     flowMaxZ = root['flow_maxz'] # (T,4,Y,X)
-    flowMaxY = root['flow_maxy']
-    flowMaxX = root['flow_maxx']
+    flowMaxY = root['flow_maxy'] # (T,4,Z,X)
+    flowMaxX = root['flow_maxx'] # (T,4,Z,Y)
     
     lenT = flowMaxZ.shape[0]
     lenZ = flowMaxX.shape[2]
@@ -559,27 +653,24 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
     
     gap = 20
 
-    movieWidth = lenX + scaledLenZ + gap
-    movieHeight = lenY + scaledLenZ + gap
+    # YZ strip on top, XZ strip on left, XY main view bottom-right
+    movieWidth = scaledLenZ + gap + lenX
+    movieHeight = scaledLenZ + gap + lenY
 
     # define scale bars
-    scaleBarLength = getScaleBarLength(root, channel.voxelDims)
+    scaleBarLengths = [10, 50, 100, 500, 1000, 2000, 5000, 10000, 50000]  # in um
+    projDimsUm = [lenX*voxelDims[0], lenY*voxelDims[1], lenZ*voxelDims[2]]
+    approxScaleBarLength = projDimsUm[1]/5
+    scaleBarLength = min(scaleBarLengths, key=lambda x:abs(x-approxScaleBarLength))
+
     scaleBarXY = scaleBar(
         posY = movieHeight,
-        posX = lenX,
+        posX = movieWidth,
         length = scaleBarLength,
-        pxPerMicron = 1/channel.voxelDims[0],
+        pxPerMicron = 1/voxelDims[0],
         font = None,
     )
     scaleBarXY._setFont()
-    scaleBarXZ = scaleBar(
-        posY = scaledLenZ,
-        posX = lenX + gap + scaledLenZ,
-        length = int(lenZ*channel.voxelDims[2]),
-        pxPerMicron = 1/channel.voxelDims[0],
-        font = None,
-    )
-    scaleBarXZ._setFont()
     
     vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
 
@@ -615,43 +706,28 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
             green_yz = np.clip(green_yz * 255, 0, 255).astype(np.uint8)
             blue_yz = np.clip(blue_yz * 255, 0, 255).astype(np.uint8)
 
-            # Create RGB images for each projection
+            # YZ PROJECTION - TOP STRIP
+            rgb_yz = np.stack([blue_yz, green_yz, red_yz], axis=-1)  # BGR for OpenCV
+            rgb_yz_scaled = scaleXZYZ_RGB(rgb_yz, zToXYRatio)
+            rgb_yz_transposed = np.transpose(rgb_yz_scaled, (1, 0, 2))  # (Y, scaledZ, 3)
+            frame[0:scaledLenZ, (scaledLenZ+gap):movieWidth] = rgb_yz_transposed
+
+            # XZ PROJECTION - LEFT STRIP  
+            rgb_xz = np.stack([blue_xz, green_xz, red_xz], axis=-1)  # BGR for OpenCV
+            rgb_xz_flipped = np.flip(rgb_xz, axis=0)  # Flip like regular function
+            rgb_xz_scaled = scaleXZYZ_RGB(rgb_xz_flipped, zToXYRatio)
+            frame[(scaledLenZ+gap):movieHeight, 0:scaledLenZ] = rgb_xz_scaled
+
+            # XY PROJECTION - MAIN VIEW (bottom-right)
             rgb_xy = np.stack([blue_xy, green_xy, red_xy], axis=-1)  # BGR for OpenCV
-            frame[(scaledLenZ+gap):movieHeight, 0:lenX] = rgb_xy
+            frame[(scaledLenZ+gap):movieHeight, (scaledLenZ+gap):movieWidth] = rgb_xy
 
-            # XZ projection (top) - scale and flip 
-            rgb_xz = np.stack([blue_xz, green_xz, red_xz], axis=-1)
-            rgb_xz_flipped = np.flip(rgb_xz, axis=0)
-            rgb_xz_scaled = np.zeros((scaledLenZ, lenX, 3), dtype=np.uint8)
-            
-            for z in range(lenZ):
-                z_start = int(z * zToXYRatio)
-                z_end = min(int((z + 1) * zToXYRatio), scaledLenZ)
-                if z_start < scaledLenZ:
-                    rgb_xz_scaled[z_start:z_end, :] = rgb_xz_flipped[z]
-            
-            frame[0:scaledLenZ, 0:lenX] = rgb_xz_scaled
-
-            # YZ projection (bottom right) - scale and transpose
-            rgb_yz = np.stack([blue_yz, green_yz, red_yz], axis=-1)
-            rgb_yz_scaled = np.zeros((scaledLenZ, lenY, 3), dtype=np.uint8)
-            
-            for z in range(lenZ):
-                z_start = int(z * zToXYRatio)
-                z_end = min(int((z + 1) * zToXYRatio), scaledLenZ)
-                if z_start < scaledLenZ:
-                    rgb_yz_scaled[z_start:z_end, :] = rgb_yz[z]
-            
-            rgb_yz_transposed = np.transpose(rgb_yz_scaled, (1, 0, 2))
-            frame[(scaledLenZ+gap):movieHeight, (lenX+gap):movieWidth] = rgb_yz_transposed
-
-            # add scale bars
+            # add scale bar
             frame = scaleBarXY._addScaleBar(frame)
-            frame = scaleBarXZ._addScaleBar(frame)
 
             # time stamp
             t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
-            timeStampPos = (0, scaledLenZ+gap)
+            timeStampPos = (0, 0)
             frame = addTimeStamp(frame, timeStampPos, t, scaleBarXY.font)
 
             # write frame 

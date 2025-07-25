@@ -12,6 +12,15 @@ def get_video_dimensions(video_path):
     cap.release()
     return width, height
 
+def get_video_fps(video_path):
+    """Get frame rate of video"""
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return 30  # Default fallback
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    cap.release()
+    return fps
+
 def get_cross_platform_settings():
     """Get optimal video settings based on the current platform"""
     system = platform.system()
@@ -57,6 +66,15 @@ def combine_movies(xy_movie, opticalflow_movie, output_path):
     # gets dimensions of both videos
     xy_w, xy_h = get_video_dimensions(xy_movie)
     opt_w, opt_h = get_video_dimensions(opticalflow_movie)
+
+    # Get frame rates to match them if they're different
+    xy_fps = get_video_fps(xy_movie)
+    opt_fps = get_video_fps(opticalflow_movie)
+    
+    if xy_fps != opt_fps:
+        print(f"Warning: Different frame rates detected - XY: {xy_fps}fps, Flow: {opt_fps}fps")
+        print("Using XY video frame rate for output")
+
 
     # build FFmpeg filter to equalize heights since videos will be stacked horizontally (so only heights matter)
     if xy_h != opt_h:

@@ -70,6 +70,7 @@ def plot_flow(vx, vy, vz, conf, raw_slice, axis, slice_idx, frame_number, save_p
     axs[0, 2].set_title(f'Magnitude (max={max_flow:.3f})', fontsize=14)
     plt.colorbar(im2, ax=axs[0, 2], shrink=0.8)
 
+
     # Plot 4: vz plot
     if vz is not None:
         vz_max = np.max(np.abs(vz))
@@ -80,6 +81,7 @@ def plot_flow(vx, vy, vz, conf, raw_slice, axis, slice_idx, frame_number, save_p
         axs[1, 0].text(0.5, 0.5, 'No vz data', ha='center', va='center', 
                       transform=axs[1, 0].transAxes, fontsize=12)
         axs[1, 0].set_title(f'Out-of-plane Flow (v{axis})', fontsize=14)
+    
     
     # Plot 5: Confidence
     if conf is not None:
@@ -103,7 +105,7 @@ def plot_flow(vx, vy, vz, conf, raw_slice, axis, slice_idx, frame_number, save_p
         axs[1, 2].imshow(raw_enhanced, cmap='gray', origin='lower', alpha=0.8)
         
         # Create a selective overlay: only show significant flow
-        flow_threshold = np.percentile(magnitude, 75)  # Only show top 25% of flow
+        flow_threshold = np.percentile(magnitude, 50)  # Only show top 50% of flow
         significant_flow_mask = magnitude > flow_threshold
         
         # Apply mask to HSV flow for selective overlay
@@ -192,7 +194,7 @@ def plot_flow(vx, vy, vz, conf, raw_slice, axis, slice_idx, frame_number, save_p
         print(f"Saved to {save_path}")
     
     plt.close()  # Close figure to free memory
-
+  
 def main():
     if len(sys.argv) < 3:
         print("Usage: python visualize_3D_flow.py <results_directory> <frame_number> [slice_index]")
