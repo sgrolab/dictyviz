@@ -43,13 +43,13 @@ def compute_3D_opticalflow(zarr_path):
 
     # Initialize the farneback object
     farneback = opticalflow3D.Farneback3D(
-        iters = 10,
-        num_levels = 4,
-        scale = 0.5,
-        spatial_size = 15,
-        presmoothing = 3,
-        filter_type = "gaussian",
-        filter_size = 7,
+        iters = 5,
+        num_levels = 3,
+        scale = 0.6,
+        spatial_size = 5,
+        presmoothing = 7,
+        filter_type = "box",
+        filter_size = 21, 
     )
 
     successful_frames = []
@@ -81,10 +81,10 @@ def compute_3D_opticalflow(zarr_path):
         print(f"Input arrays - frame1_np: {frame1_np.shape}, frame2_np: {frame2_np.shape}")
         
         # Dynamically set total_vol, sub_volume, and overlap
+
         total_vol = frame1_np.shape
         sub_volume = tuple(max(1, s // 4) for s in total_vol)  # 1/4 of each dimension, at least 1
         overlap = tuple(max(1, sv // 2) for sv in sub_volume)  # 1/2 of sub_volume, at least 1
-
 
         try:
             # Calculate optical flow between consecutive frames
