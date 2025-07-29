@@ -4,6 +4,7 @@
 import os
 import numpy as np
 import zarr
+from scipy import ndimage
 
 def load_flow_frame(results_dir, frame_number):
     """Load optical flow data for a specific frame"""
@@ -72,7 +73,9 @@ def extract_slice(flow_data, raw_data=None, idx=None):
     vz = flow_data.get('vz', None)
     
     if vz is not None:
-        vz = vz[idx, :, :]
+        vz_raw = vz[idx, :, :]
+        vz = ndimage.gaussian_filter(vz_raw, sigma=1.5)
+        
     conf = flow_data.get('confidence', None)
     if conf is not None:
         conf = conf[idx, :, :]

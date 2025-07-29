@@ -41,23 +41,31 @@ def compute_3D_opticalflow(zarr_path):
     # get the total number of frames
     num_frames = resArray.shape[0]
 
-    # Initialize the farneback object
-    farneback = opticalflow3D.Farneback3D(
-        iters = 5,
-        num_levels = 3,
-        scale = 0.6,
-        spatial_size = 5,
-        presmoothing = 7,
-        filter_type = "box",
-        filter_size = 21, 
-    )
+    z_dim, y_dim, x_dim = resArray.shape[2], resArray.shape[3], resArray.shape[4]
 
-    successful_frames = []
+    # Adaptive iterations: more for larger data
+    iters = 7 if max(z_dim, y_dim, x_dim) > 600 else 5
 
-    startingFrame = 91
+    # Adaptive pyramid levels: more for larger data
+    num_levels = 4 if max(z_dim, y_dim, x_dim) > 600 else 3
+
+    # Adaptive scale: finer for small data, coarser for large
+    scale = 0.4 if max(z_dim, y_dim, x_dim) > 600 else 0.6
+
+    # Adaptive spatial size: larger for bigger data
+    spatial_size = 8 if max(z_dim, y_dim, x_dim) > 600 else 5
+
+    # Adaptive presmoothing: less for small data, more for noisy/large
+    presmoothing = 6 if max(z_dim, y_dim, x_dim) > 600 else 3
+
+    # filter type: "gaussian" for quality, "box" for speed
+    filter_type = "gaussian"
+
+    successful_frames = [] 
 
     # Loop through consecutive frame pairs
-    for i in range(startingFrame, num_frames - 1):
+    for i in range(num_frames - 1):
+
         print(f"\n--- Processing frame pair {i} -> {i+1} ---")
         
         # Monitor GPU memory
@@ -83,8 +91,26 @@ def compute_3D_opticalflow(zarr_path):
         # Dynamically set total_vol, sub_volume, and overlap
 
         total_vol = frame1_np.shape
-        sub_volume = tuple(max(1, s // 4) for s in total_vol)  # 1/4 of each dimension, at least 1
-        overlap = tuple(max(1, sv // 2) for sv in sub_volume)  # 1/2 of sub_volume, at least 1
+        sub_volume = tuple(max(1, s // 2) for s in total_vol)  # 1/2 of each dimension, at least 1
+        overlap = tuple(max(1, int(sv * 0.6)) for sv in sub_volume)  # 60% of sub_volume, at least 1
+    
+        # FIXED: Set filter size to be safe for padding operations
+        # Filter size should be small enough that padding doesn't exceed input dimensions
+        # For a dimension of size N, padding of filter_size should satisfy: 2*filter_size < N
+        min_dim = min(total_vol)
+        filter_size = max(1, min(min_dim // 3, min(sub_volume) // 3))  
+        filter_size = max(3, (filter_size // 2) * 2 + 1)  # Ensures filter_size is odd and at least 3
+
+         # Initialize the farneback object
+        farneback = opticalflow3D.Farneback3D(
+            iters = iters,
+            num_levels = num_levels,
+            scale = scale,
+            spatial_size = spatial_size,
+            presmoothing = presmoothing,
+            filter_type = filter_type,
+            filter_size = filter_size,
+        )
 
         try:
             # Calculate optical flow between consecutive frames
