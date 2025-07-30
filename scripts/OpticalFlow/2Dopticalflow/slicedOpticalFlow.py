@@ -6,6 +6,7 @@ import numpy as np
 import imageio
 import datetime
 import zarr
+import json
 import tifffile as tiff
 import matplotlib
 matplotlib.use('Agg')
@@ -16,7 +17,8 @@ def enhance_cell_contrast(frame):
         clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
         return clahe.apply(frame)
 
-def compute_farneback_optical_flow(zarr_path, dim, cropID, output_dir, log_file):
+# function to compute farneback optical flow
+def compute_farneback_optical_flow(zarr_path, channel, dim, cropID, output_dir, log_file, params):
     
     parent_dir = os.path.dirname(zarr_path)
 
@@ -47,7 +49,7 @@ def compute_farneback_optical_flow(zarr_path, dim, cropID, output_dir, log_file)
 
     flow_list = np.zeros((num_frames, num_slices, height, width, 2), dtype=np.float32)  # initialize flow list
 
-    prev_frame_raw = slicedMax[0,0,:,:,:]
+    prev_frame_raw = slicedMax[0,channel,:,:,:]
     prev_frame_raw = np.concatenate(prev_frame_raw, axis=0) #concatenate slices into a single frame
     prev_frame_raw = np.flip(prev_frame_raw, axis=0)  # flip vertically to match original orientation
 
@@ -61,7 +63,7 @@ def compute_farneback_optical_flow(zarr_path, dim, cropID, output_dir, log_file)
 
     for frame_index in range (1, num_frames):
 
-        curr_frame_raw = slicedMax[frame_index, 0, :, :, :]
+        curr_frame_raw = slicedMax[frame_index, channel, :, :, :]
         curr_frame_raw = np.concatenate(curr_frame_raw, axis=0)  # concatenate slices into a single frame
         curr_frame_raw = np.flip(curr_frame_raw, axis=0)  # flip vertically to match original orientation
 
@@ -85,11 +87,50 @@ def compute_farneback_optical_flow(zarr_path, dim, cropID, output_dir, log_file)
                 flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
             )
         else:
-            # standard parameters for early frames
+            # use parameters from the JSON file for early frames
             flow = cv2.calcOpticalFlowFarneback(
                 prev=prev_frame, next=curr_frame, flow=None,
-                pyr_scale=0.5, levels=10, winsize=7,
-                iterations=8, poly_n=5, poly_sigma=1.1, 
+                
+                # pyr_scale: Image pyramid scaling factor (0.1 to 0.99)
+                # - Higher values (0.7-0.9): Faster computation, captures large motions better, less detail
+                # - Lower values (0.3-0.5): Slower computation, captures fine details better, may miss large motions
+                # - 0.5 means each pyramid level is half the size of the previous level
+                pyr_scale=params['pyr_scale'],
+                
+                # levels: Number of pyramid levels (1-20+)
+                # - More levels: Better handling of large motions, slower computation
+                # - Fewer levels: Faster computation, may miss large displacements
+                # - Each level processes the image at different resolutions
+                levels=params['levels'],
+                
+                # winsize: Averaging window size in pixels (odd numbers: 5, 7, 9, 11, 15, etc.)
+                # - Larger windows (11-15): More robust to noise, smoother flow, less spatial detail
+                # - Smaller windows (5-7): More spatial detail, more sensitive to noise
+                # - Must be odd number, represents neighborhood size for flow calculation
+                winsize=params['winsize'],
+                
+                # iterations: Number of iterations at each pyramid level (3-15)
+                # - More iterations: More accurate flow estimation, slower computation
+                # - Fewer iterations: Faster computation, potentially less accurate
+                # - Algorithm refines flow estimate this many times per level
+                iterations=params['iterations'],
+                
+                # poly_n: Size of pixel neighborhood for polynomial expansion (3, 5, or 7)
+                # - 3: Fastest, least accurate, good for small motions
+                # - 5: Balanced speed/accuracy (most common choice)
+                # - 7: Slowest, most accurate, good for complex motions
+                # - Determines complexity of motion model fitted to each pixel
+                poly_n=params['poly_n'],
+                
+                # poly_sigma: Standard deviation of Gaussian used to smooth derivatives (0.8-2.0)
+                # - Lower values (0.8-1.0): Preserves sharp edges, more noise sensitive
+                # - Higher values (1.2-1.5): Smoother derivatives, more noise robust
+                # - Controls smoothing applied before polynomial fitting
+                poly_sigma=params['poly_sigma'],
+                
+                # flags: Algorithm behavior flags
+                # - OPTFLOW_FARNEBACK_GAUSSIAN: Use Gaussian weighting (recommended)
+                # - Can combine with other flags using bitwise OR (|)
                 flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
             )
 
@@ -176,7 +217,7 @@ def make_movie(output_dir, fps=10):
         # position in bottom right with padding
         pad = 10
         pos_x = width - legend_w - pad
-        pos_y = height - legend_h - pad
+        pos_y = height*num_slices - legend_h - pad
 
         # create a copy of the flow visualization and overlay the legend
         final_frame[pos_y:pos_y+legend_h, pos_x:pos_x+legend_w] = legend
@@ -353,8 +394,13 @@ def find_optimal_regions(magnitude_map, variance_map, top_k=5, suppression_radiu
         # Apply suppression mask around selected point and the two adjacent slices
         rr, cc = np.ogrid[:score.shape[2], :score.shape[3]]
         suppression_mask = (rr - row)**2 + (cc - col)**2 <= suppression_radius**2
-        suppression_mask = np.broadcast_to(suppression_mask, (3, score.shape[2], score.shape[3]))
-        used_masks[slice_nb-1:slice_nb+2][suppression_mask] = True
+        
+        # Apply suppression to current slice and adjacent slices (with bounds checking)
+        slice_start = max(0, slice_nb - 1)
+        slice_end = min(score.shape[1], slice_nb + 2)
+        
+        for s in range(slice_start, slice_end):
+            used_masks[s][suppression_mask] = True
     
     return results
 
@@ -431,25 +477,42 @@ def crop_regions_from_zarr(zarr_path, dim, nb_slices, output_dir, optimal_region
 
 # main function
 def main():
-    if len(sys.argv) < 2:
-        print("usage: python slicedOpticalFlow.py <path_to_zarr> [cropID]")
+    if len(sys.argv) < 3:
+        print("usage: python slicedOpticalFlow.py <path_to_zarr> <channel> [cropID]")
         sys.exit(1)
 
     zarr_path = sys.argv[1]
+    channel = int(sys.argv[2])
     if not os.path.exists(zarr_path):
         print(f"error: path not found: {zarr_path}")
         sys.exit(1)
-    
-    cropID = sys.argv[2] if len(sys.argv) > 2 else ""
 
-    
+    cropID = sys.argv[3] if len(sys.argv) > 3 else ""
 
     dims = ['x', 'y']
-    output_dirs = [os.path.join(os.path.dirname(zarr_path), "sliced_X_optical_flow_output"), os.path.join(os.path.dirname(zarr_path), "sliced_Y_optical_flow_output")]
+    output_dirs = [os.path.join(os.path.dirname(zarr_path), "sliced_X_optical_flow_output", str(channel)), os.path.join(os.path.dirname(zarr_path), "sliced_Y_optical_flow_output", str(channel))]
     for output_dir, dim in zip(output_dirs, dims):
         os.makedirs(output_dir, exist_ok=True)
 
         log_path = os.path.join(output_dir, "slicedOpticalFlow_out.txt")
+
+        # Read optical flow parameters from JSON file
+        params_file = os.path.join(os.path.dirname(zarr_path), "parameters.json")
+        params = {}
+        with open(params_file, 'r') as f:
+            params = json.load(f)
+        if 'opticalFlow' in params:
+            params = params['opticalFlow']
+        else:
+            print(f"Warning: 'opticalFlow' parameters not found in {params_file}, using default values.")
+            params = {
+                "pyr_scale": 0.5,
+                "levels": 3,
+                "winsize": 15,
+                "iterations": 3,
+                "poly_n": 5,
+                "poly_sigma": 1.2
+            }
 
         with open(log_path, 'w') as f:
             print("zarr path:", zarr_path, file=f)
@@ -461,7 +524,7 @@ def main():
                 print("skipping optical flow calculation for", dim, "\n", file=f)
             else:
                 print("optical flow calculation started at", datetime.datetime.now(), file=f)
-                compute_farneback_optical_flow(zarr_path, dim, cropID, output_dir, f)
+                compute_farneback_optical_flow(zarr_path, channel, dim, cropID, output_dir, f, params)
                 print("optical flow calculation completed at", datetime.datetime.now(), "\n", file=f)
 
             # check if movie already exists
