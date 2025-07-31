@@ -98,32 +98,48 @@ def plot_flow(vx, vy, vz, conf, raw_slice, axis, slice_idx, frame_number, save_p
 
     # Plot 4: vz plot
     if vz is not None:
-        # apply Gaussian smoothing to reduce noise
-        vz_smoothed = gaussian_filter(vz, sigma=7)
+        # Apply Gaussian smoothing to reduce noise
+        vz_smoothed = gaussian_filter(vz, sigma=3)  # Reduced sigma for less blurring across tiles
         
-        # Convert to 0-1 range for CLAHE
-        vz_min, vz_max = np.min(vz_smoothed), np.max(vz_smoothed)
-        vz_range = vz_max - vz_min
-        if vz_range > 0:
-            vz_01 = (vz_smoothed - vz_min) / vz_range
-            
-            # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
-            vz_clahe = equalize_adapthist(vz_01, kernel_size=96, clip_limit=0.01)
-
-            # Apply additional smoothing to help with tiling
-            vz_clahe_smooth = gaussian_filter(vz_clahe, sigma = 1.5)
-            
-            # Reduce contrast slightly to avoid over-enhancement
-            # Convert to [-1, 1] range but compress slightly to avoid extremes
-            vz_normalized = 1.8 * vz_clahe_smooth - 0.9  # Results in range of [-0.9, 0.9] instead of [-1, 1]
-        else:
-            vz_normalized = np.zeros_like(vz_smoothed)
+        # Get approximate tile dimensions (3x4 grid = 12 tiles)
+        height, width = vz_smoothed.shape
+        tile_height = height // 4
+        tile_width = width // 3
         
-        # Display the locally normalized vz
+        # Create a normalized version with zero mean per tile
+        vz_normalized = np.zeros_like(vz_smoothed)
+        
+        # Process each tile independently
+        for i in range(4):  # 4 rows of tiles
+            for j in range(3):  # 3 columns of tiles
+                # Define tile boundaries
+                y_start = i * tile_height
+                y_end = min((i + 1) * tile_height, height)
+                x_start = j * tile_width
+                x_end = min((j + 1) * tile_width, width)
+                
+                # Extract tile
+                tile = vz_smoothed[y_start:y_end, x_start:x_end]
+                
+                # Normalize tile to have zero mean
+                tile_mean = np.mean(tile)
+                
+                if np.abs(tile_mean) > 1e-6:  # Avoid division by zero or normalization of uniform tiles
+                    # Normalize to have zero mean
+                    normalized_tile = (tile - tile_mean)
+                else:
+                    normalized_tile = np.zeros_like(tile)
+                
+                # Store normalized tile
+                vz_normalized[y_start:y_end, x_start:x_end] = normalized_tile
+        
+        # Apply a small blur at tile boundaries to reduce edge artifacts
+        vz_normalized = gaussian_filter(vz_normalized, sigma=1)
+        
+        # Display the tile-normalized vz
         im3 = axs[1, 0].imshow(vz_normalized, cmap='RdBu_r', origin='lower', vmin=-1, vmax=1)
         axs[1, 0].set_title(f'Out-of-plane Flow (v{axis})', fontsize=14)
         plt.colorbar(im3, ax=axs[1, 0], shrink=0.8)
-    
     
     # Plot 5: Confidence
     """
