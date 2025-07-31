@@ -11,6 +11,9 @@ import helpers.flowLoader as flowLoader
 from scipy.ndimage import gaussian_filter
 import opticalFlow2D.opticalFlow as opticalFlow
 
+# Adaptive local normalization for flow in z 
+from skimage.exposure import equalize_adapthist
+
 def create_hsv_flow(vx, vy, max_flow=None):
 
     # Calculate magnitude and angle like in opticalFlow.py
@@ -33,6 +36,7 @@ def create_hsv_flow(vx, vy, max_flow=None):
     return rgb_flow, mag, max_flow
 
 def plot_flow(vx, vy, vz, conf, raw_slice, axis, slice_idx, frame_number, save_path=None, show_arrows=True, arrow_step=10):
+    
     """Create comprehensive flow visualization with raw data"""
     
     # Create HSV flow visualization using OpenCV
@@ -94,15 +98,31 @@ def plot_flow(vx, vy, vz, conf, raw_slice, axis, slice_idx, frame_number, save_p
 
     # Plot 4: vz plot
     if vz is not None:
-        vz_smoothed = gaussian_filter(vz, sigma=5)
-        vz_percentile = np.percentile(np.abs(vz_smoothed), 98)
-        im3 = axs[1, 0].imshow(vz_smoothed, cmap='RdBu_r', origin='lower', vmin=-vz_percentile, vmax=vz_percentile)
+        # apply Gaussian smoothing to reduce noise
+        vz_smoothed = gaussian_filter(vz, sigma=7)
+        
+        # Convert to 0-1 range for CLAHE
+        vz_min, vz_max = np.min(vz_smoothed), np.max(vz_smoothed)
+        vz_range = vz_max - vz_min
+        if vz_range > 0:
+            vz_01 = (vz_smoothed - vz_min) / vz_range
+            
+            # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
+            vz_clahe = equalize_adapthist(vz_01, kernel_size=96, clip_limit=0.01)
+
+            # Apply additional smoothing to help with tiling
+            vz_clahe_smooth = gaussian_filter(vz_clahe, sigma = 1.5)
+            
+            # Reduce contrast slightly to avoid over-enhancement
+            # Convert to [-1, 1] range but compress slightly to avoid extremes
+            vz_normalized = 1.8 * vz_clahe_smooth - 0.9  # Results in range of [-0.9, 0.9] instead of [-1, 1]
+        else:
+            vz_normalized = np.zeros_like(vz_smoothed)
+        
+        # Display the locally normalized vz
+        im3 = axs[1, 0].imshow(vz_normalized, cmap='RdBu_r', origin='lower', vmin=-1, vmax=1)
         axs[1, 0].set_title(f'Out-of-plane Flow (v{axis})', fontsize=14)
         plt.colorbar(im3, ax=axs[1, 0], shrink=0.8)
-    else:
-        axs[1, 0].text(0.5, 0.5, 'No vz data', ha='center', va='center', 
-                      transform=axs[1, 0].transAxes, fontsize=12)
-        axs[1, 0].set_title(f'Out-of-plane Flow (v{axis})', fontsize=14)
     
     
     # Plot 5: Confidence
@@ -164,7 +184,7 @@ def plot_flow(vx, vy, vz, conf, raw_slice, axis, slice_idx, frame_number, save_p
                 
                 for i in range(len(y.flat)):
                     if significant_arrows.flat[i]:
-                        # Color arrows based on magnitude: cyan for medium, yellow for high
+                        # Color arrows based on magnitude: cyan for medium, yellow for high, and white for low 
                         mag_norm = mag_arrows.flat[i] / max_flow
                         if mag_norm > 0.8:
                             arrow_colors.append('yellow')
