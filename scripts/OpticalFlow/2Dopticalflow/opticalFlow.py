@@ -1,10 +1,13 @@
 import os
 import sys
 import cv2
+import torch
 import numpy as np
 import imageio
 import datetime
 import zarr
+import json
+import tifffile as tiff
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -15,7 +18,7 @@ def enhance_cell_contrast(frame):
         return clahe.apply(frame)
 
 # function to compute farneback optical flow
-def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file, params):
+def compute_farneback_optical_flow(zarr_path, channel, cropID, output_dir, log_file, params):
     
     parent_dir = os.path.dirname(zarr_path)
 
@@ -45,7 +48,7 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file, para
     hsv[..., 1] = 255  # set saturation to maximum
     flow_list = []  # list to store optical flow data
     
-    prev_frame_raw = maxZ[0,0,0,:,:]
+    prev_frame_raw = maxZ[0,channel,0,:,:]
     prev_frame = cv2.normalize(prev_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
     prev_frame = prev_frame.astype(np.uint8)
     prev_frame = enhance_cell_contrast(prev_frame)
@@ -55,7 +58,7 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file, para
     prev_flow = None
 
     for frame_index in range (1, num_frames):
-        curr_frame_raw = maxZ[frame_index, 0, 0, :, :]
+        curr_frame_raw = maxZ[frame_index, channel, 0, :, :]
         curr_frame = cv2.normalize(curr_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
         curr_frame = curr_frame.astype(np.uint8)
         curr_frame = enhance_cell_contrast(curr_frame)
@@ -106,7 +109,7 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file, para
             # - OPTFLOW_FARNEBACK_GAUSSIAN: Use Gaussian weighting (recommended)
             # - Can combine with other flags using bitwise OR (|)
             flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
-    )
+        )
         
         # adds temporal smoothing to help reduce flickering between frames
         if prev_flow is not None:
@@ -140,7 +143,7 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file, para
         
         mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])  # calculate magnitude and angle
         hsv[..., 0] = ang * 180 / np.pi / 2  # set hue based on angle
-        hsv[..., 2] = np.clip(mag * (255/15), 0, 255).astype(np.uint8) # takes raw magnitude values and will scale anything above a magntitude of 15 to a brightness of 255
+        hsv[..., 2] = np.clip(mag * (255/10), 0, 255).astype(np.uint8) # takes raw magnitude values and will scale anything above a magntitude of 15 to a brightness of 255
 
         rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # convert hsv to bgr
 
@@ -236,15 +239,18 @@ def create_flow_color_wheel(width, height):
             if distance > max_radius:
                 continue
             
-            # calculate angle and normalize to 0-360 degrees
-            angle = (np.degrees(np.arctan2(-dy, dx)) + 250) % 360 
+            # calculate angle using same method as main flow visualization
+            # This matches: ang = cv2.cartToPolar(...) and hsv[..., 0] = ang * 180 / np.pi / 2
+            angle_rad = np.arctan2(dy, dx)  # angle in radians (note: dy, dx for correct orientation)
+            hue = angle_rad * 180 / np.pi / 2  # convert to HSV hue (0-180)
+            
+            # ensure hue is in valid range
+            hue = hue % 180
             
             # normalize distance to 0-1 range for brightness
             normalized_distance = distance / max_radius
             
             # set HSV values based on angle and distance
-            # OpenCV uses 0-180 for hue (represents 0-360 degrees)
-            hue = angle / 2
             saturation = 255
             
             # makes the center dimmer, edges brighter
@@ -313,31 +319,185 @@ def create_flow_histogram(mag, width, height):
 
     return hist_image
 
+# calculate the magnitude and variance of the window 
+def calculate_mag_var(vx, vy, log_file, window_size=40):
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}", file=log_file)
+    
+    # Convert to torch tensors
+    vx_torch = torch.from_numpy(vx).float().to(device)
+    vy_torch = torch.from_numpy(vy).float().to(device)
+    
+    magnitude = torch.sqrt(vx_torch**2 + vy_torch**2)
+    
+    # Use unfold to create sliding windows
+    # unfold(dim, size, step) creates sliding windows
+    vx_windows = vx_torch.unfold(2, window_size, 1).unfold(3, window_size, 1)  # shape: (frames, slices, out_h, out_w, win_h, win_w)
+    vy_windows = vy_torch.unfold(2, window_size, 1).unfold(3, window_size, 1)
+    mag_windows = magnitude.unfold(2, window_size, 1).unfold(3, window_size, 1)
+    
+    # Calculate variance and mean over the window dimensions (last 2 dims)
+    var_x = torch.var(vx_windows, dim=(-2, -1))
+    var_y = torch.var(vy_windows, dim=(-2, -1))
+    total_variance = var_x + var_y
+    mean_magnitude = torch.mean(mag_windows, dim=(-2, -1))
+    
+    # Move back to CPU and convert to numpy
+    magnitude_map = mean_magnitude.cpu().numpy()
+    variance_map = total_variance.cpu().numpy()
+    
+    return magnitude_map, variance_map
+
+def find_optimal_regions(magnitude_map, variance_map, top_k=5, suppression_radius = 35):
+    """
+    Find optimal regions with high magnitude and low variance
+    Returns list of (row, col, magnitude, variance, score) tuples
+    """
+    # normalize maps to 0-1 range
+    norm_magnitude = (magnitude_map - magnitude_map.min()) / (magnitude_map.max() - magnitude_map.min())
+    norm_variance = (variance_map - variance_map.min()) / (variance_map.max() - variance_map.min())
+
+    # score: high magnitude, low variance
+    score = norm_magnitude - norm_variance
+    results = []
+
+    used_masks = np.zeros_like(score[0], dtype=bool)
+
+    for i in range(top_k):
+
+        used_masks_broadcast = np.broadcast_to(used_masks, score.shape)
+        masked_score = np.ma.array(score, mask=used_masks_broadcast)
+        if masked_score.count() == 0:
+            break
+    
+        # Find highest remaining score
+        max_idx = np.unravel_index(masked_score.argmax(), score.shape)
+        frame, row, col = max_idx
+        results.append((frame, row, col, 
+                        magnitude_map[frame, row, col], 
+                        variance_map[frame, row, col], 
+                        norm_magnitude[frame, row, col], 
+                        norm_variance[frame, row, col], 
+                        score[frame, row, col]))
+
+        # Apply suppression mask around selected point and the two adjacent slices
+        rr, cc = np.ogrid[:score.shape[1], :score.shape[2]]
+        suppression_mask = (rr - row)**2 + (cc - col)**2 <= suppression_radius**2
+        
+        used_masks[suppression_mask] = True
+    
+    return results
+
+def save_analysis_results(optimal_regions, output_dir):
+    """
+    Save magnitude/variance analysis results to the frame directory
+    """
+    # Save optimal regions as text file
+    regions_file = os.path.join(output_dir, "optimal_regions.txt")
+    with open(regions_file, 'w') as f:
+        f.write(f"Optimal Flow Regions Analysis\n")
+        f.write(f"Analysis Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        f.write("Top regions (frame, row, col, raw_magnitude, raw_variance, norm_magnitude, norm_variance, score):\n")
+
+        for i, (frame, row, col, raw_mag, raw_var, norm_magnitude, norm_variance, score) in enumerate(optimal_regions):
+            f.write(f"{i+1}. Frame: {frame:3d}, Row: {row:3d}, Col: {col:3d}, "
+                   f"Raw_Mag: {raw_mag:.4f}, Raw_Var: {raw_var:.4f}, "
+                   f"Norm_Mag: {norm_magnitude:.4f}, Norm_Var: {norm_variance:.4f}, "
+                   f"Score: {score:.4f}\n")
+    
+    print(f"✓ Analysis results saved:")
+    print(f"  - magnitude_map.npy") 
+    print(f"  - variance_map.npy") 
+    print(f"  - optimal_regions.txt")
+    
+    return regions_file
+
+def crop_regions_from_zarr(zarr_path, output_dir, optimal_regions, f, crop_size=256):
+    """
+    Crop regions from zarr based on optimal regions found
+    """
+
+    # create a directory for cropped regions
+    cropped_dir = os.path.join(output_dir, "cropped_regions")
+    os.makedirs(cropped_dir, exist_ok=True)
+
+    if not os.path.exists(zarr_path):
+        print(f"error: zarr path not found: {zarr_path}", file=f)
+        return
+
+    print(f"cropping regions from zarr: {zarr_path}", file=f)
+    zarr_root = zarr.open(zarr_path, mode='r+')
+    res_array = zarr_root[0][0]
+
+    _, _, _, lenY, lenX = res_array.shape
+
+    for i, (frame, row, col, *_) in enumerate(optimal_regions):
+
+        x_min = col - (crop_size // 2)
+        x_max = col + (crop_size // 2)
+        y_min = row - (crop_size // 2)
+        y_max = row + (crop_size // 2)
+
+        # ensure cropping indices are within bounds
+        x_min = max(0, x_min)
+        x_max = min(lenX, x_max)
+        y_min = max(0, y_min)
+        y_max = min(lenY, y_max)
+
+        cropped_region = res_array[:, :, :, y_min:y_max, x_min:x_max]
+
+        # save the cropped region as a TIFF file
+        cropped_filename = os.path.join(cropped_dir, f"cropped_region_{i+1}_frame{frame:03d}_row{row:03d}_col{col:03d}.ome.tif")
+        tiff.imwrite(cropped_filename, cropped_region, metadata={'axes': 'TCZYX'})
+
+        print(f"✓ Cropped region {i+1} saved to: {cropped_filename}", file=f)
+
 # main function
 def main():
-    if len(sys.argv) < 2:
-        print("usage: python opticalFlow.py <path_to_zarr> [cropID]")
+    if len(sys.argv) < 3:
+        print("usage: python opticalFlow.py <path_to_zarr> <channel> [cropID]")
         sys.exit(1)
 
     zarr_path = sys.argv[1]
+    channel = int(sys.argv[2]) 
     if not os.path.exists(zarr_path):
         print(f"error: path not found: {zarr_path}")
         sys.exit(1)
-    
-    cropID = sys.argv[2] if len(sys.argv) > 2 else ""
 
-    output_dir = os.path.join(os.path.dirname(zarr_path), "optical_flow_output")
+    cropID = sys.argv[3] if len(sys.argv) > 3 else ""
+
+    output_dir = os.path.join(os.path.dirname(zarr_path), "optical_flow_output", str(channel))
     os.makedirs(output_dir, exist_ok=True)
     
     log_path = os.path.join(output_dir, "opticalFlow_out.txt")
+
+    # Read optical flow parameters from JSON file
+    params_file = os.path.join(os.path.dirname(zarr_path), "parameters.json")
+    params = {}
+    with open(params_file, 'r') as f:
+        params = json.load(f)
+    if 'opticalFlow' in params:
+        params = params['opticalFlow']
+    else:
+        print(f"Warning: 'opticalFlow' parameters not found in {params_file}, using default values.")
+        params = {
+            "pyr_scale": 0.5,
+            "levels": 3,
+            "winsize": 15,
+            "iterations": 3,
+            "poly_n": 5,
+            "poly_sigma": 1.2
+        }
 
     with open(log_path, 'w') as f:
         print("zarr path:", zarr_path, file=f)
         print("crop id:", cropID, file=f)
         print("output directory:", output_dir, file=f)
+        print("optical flow parameters:", params, file=f)
         print("optical flow calculation started at", datetime.datetime.now(), "\n", file=f)
 
-        compute_farneback_optical_flow(zarr_path, cropID, output_dir, f)
+        compute_farneback_optical_flow(zarr_path, channel, cropID, output_dir, f, params)
 
         print("optical flow calculation completed at", datetime.datetime.now(), "\n", file=f)
         print("generating movie...", file=f)

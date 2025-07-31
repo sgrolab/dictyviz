@@ -9,6 +9,9 @@ if [ -z "$zarr_folder" ]; then
     exit 1
 fi
 
+# Ask user for channel
+channel=$(zenity --entry --title="Channel" --text="Enter channel (0 or 1):" --entry-text="")
+
 # Ask user for optional cropID
 cropID=$(zenity --entry --title="Crop ID" --text="Enter crop ID (leave empty if none):" --entry-text="")
 
@@ -25,10 +28,10 @@ else
     echo "Submitting job to compute optical flow..."
     if [ -z "$cropID" ]; then
         # No crop ID provided
-        bsub -n 8 -W 24:00 python3 opticalFlow.py "${zarr_folder}"
+        bsub -n 8 -W 24:00 python3 opticalFlow.py "${zarr_folder}" "${channel}"
     else
         # Crop ID provided
-        bsub -n 8 -W 24:00 python3 opticalFlow.py "${zarr_folder}" "${cropID}"
+        bsub -n 8 -W 24:00 python3 opticalFlow.py "${zarr_folder}" "${channel}" "${cropID}"
     fi
 fi 
 
