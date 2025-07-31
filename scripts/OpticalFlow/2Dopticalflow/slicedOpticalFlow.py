@@ -40,7 +40,7 @@ def compute_farneback_optical_flow(zarr_path, channel, dim, cropID, output_dir, 
     
     slicedMax = slicedMaxProjectionsRoot[f"sliced_max{dim}"]
     slicedMax = np.array(slicedMax)
-    #slicedMax = np.flip(slicedMax, axis=3)  
+    slicedMax = np.flip(slicedMax, axis=3)  #flip each slice vertically to match original orientation
 
     num_frames = slicedMax.shape[0]
     num_slices = slicedMax.shape[2]
@@ -51,7 +51,6 @@ def compute_farneback_optical_flow(zarr_path, channel, dim, cropID, output_dir, 
 
     prev_frame_raw = slicedMax[0,channel,:,:,:]
     prev_frame_raw = np.concatenate(prev_frame_raw, axis=0) #concatenate slices into a single frame
-    prev_frame_raw = np.flip(prev_frame_raw, axis=0)  # flip vertically to match original orientation
 
     prev_frame = cv2.normalize(prev_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
     prev_frame = prev_frame.astype(np.uint8)
@@ -65,7 +64,7 @@ def compute_farneback_optical_flow(zarr_path, channel, dim, cropID, output_dir, 
 
         curr_frame_raw = slicedMax[frame_index, channel, :, :, :]
         curr_frame_raw = np.concatenate(curr_frame_raw, axis=0)  # concatenate slices into a single frame
-        curr_frame_raw = np.flip(curr_frame_raw, axis=0)  # flip vertically to match original orientation
+        #curr_frame_raw = np.flip(curr_frame_raw, axis=0)  # flip vertically to match original orientation
 
         curr_frame = cv2.normalize(curr_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
         curr_frame = curr_frame.astype(np.uint8)
@@ -73,9 +72,7 @@ def compute_farneback_optical_flow(zarr_path, channel, dim, cropID, output_dir, 
 
         curr_frame = cv2.bilateralFilter(curr_frame, d=5, sigmaColor=35, sigmaSpace=5)
 
-        print(prev_frame.shape, curr_frame.shape)
-
-        if frame_index > num_frames * 0.6:  # in the last 40% of frames
+        if frame_index > num_frames * 1:  # in none of the frames for testing
             # use parameters optimized for larger movements
             flow = cv2.calcOpticalFlowFarneback(
                 prev=prev_frame, next=curr_frame, flow=None,
@@ -199,11 +196,11 @@ def make_movie(output_dir, fps=10):
         # process each frame of optical flow
         curr_frame_flow = flow_raw[frame_index]
         curr_frame_flow = np.concatenate(curr_frame_flow, axis=0)
-        curr_frame_flow = np.flip(curr_frame_flow, axis=1)  # flip vertically to match original orientation
+        #curr_frame_flow = np.flip(curr_frame_flow, axis=(1, 2))  # flip vertically and horizontally to match original orientation
 
         mag, ang = cv2.cartToPolar(curr_frame_flow[..., 0], curr_frame_flow[..., 1])  # calculate magnitude and angle
         hsv[..., 0] = ang * 180 / np.pi / 2  # set hue based on angle
-        hsv[..., 2] = np.clip(mag * (255/15), 0, 255).astype(np.uint8) # takes raw magnitude values and will scale anything above a magntitude of 15 to a brightness of 255
+        hsv[..., 2] = np.clip(mag * (255/10), 0, 255).astype(np.uint8) # takes raw magnitude values and will scale anything above a magntitude of 15 to a brightness of 255
 
         rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # convert hsv to bgr
 
@@ -252,15 +249,18 @@ def create_flow_color_wheel(width, height):
             if distance > max_radius:
                 continue
             
-            # calculate angle and normalize to 0-360 degrees
-            angle = (np.degrees(np.arctan2(-dy, dx)) + 250) % 360 
+            # calculate angle using same method as main flow visualization
+            # This matches: ang = cv2.cartToPolar(...) and hsv[..., 0] = ang * 180 / np.pi / 2
+            angle_rad = np.arctan2(dy, dx)  # angle in radians (note: dy, dx for correct orientation)
+            hue = angle_rad * 180 / np.pi / 2  # convert to HSV hue (0-180)
+            
+            # ensure hue is in valid range
+            hue = hue % 180
             
             # normalize distance to 0-1 range for brightness
             normalized_distance = distance / max_radius
             
             # set HSV values based on angle and distance
-            # OpenCV uses 0-180 for hue (represents 0-360 degrees)
-            hue = angle / 2
             saturation = 255
             
             # makes the center dimmer, edges brighter
@@ -283,10 +283,10 @@ def create_flow_color_wheel(width, height):
     text_y = center_y + text_size[1] // 2
     cv2.putText(legend, "0", (text_x, text_y), font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
 
-    text_size = cv2.getTextSize("15", font, font_scale, font_thickness)[0]
+    text_size = cv2.getTextSize("10", font, font_scale, font_thickness)[0]
     edge_x = center_x + max_radius - text_size[0] - 2  
     edge_y = center_y
-    cv2.putText(legend, "15", (edge_x, edge_y), font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
+    cv2.putText(legend, "10", (edge_x, edge_y), font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
 
     return legend
 
@@ -568,8 +568,8 @@ def main():
             # crop regions from zarr
             print("cropping regions from zarr...", file=f)
             nb_slices = magnitude_map.shape[1]
-            crop_regions_from_zarr(zarr_path, dim, nb_slices, output_dir, optimal_regions, f)
-            print("cropping completed", file=f)
+            #crop_regions_from_zarr(zarr_path, dim, nb_slices, output_dir, optimal_regions, f)
+            print("cropping skipped", file=f)
 
 # entry point
 if __name__ == "__main__":
