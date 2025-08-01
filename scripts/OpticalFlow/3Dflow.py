@@ -43,23 +43,59 @@ def compute_3D_opticalflow(zarr_path):
 
     z_dim, y_dim, x_dim = resArray.shape[2], resArray.shape[3], resArray.shape[4]
 
-    # Adaptive iterations: more for larger data
-    iters = 7 if max(z_dim, y_dim, x_dim) > 600 else 5
+    # Determine volume size category
+    max_dim = max(z_dim, y_dim, x_dim)
+    is_small = max_dim < 400
+    is_medium = 400 <= max_dim < 800
+    is_large = max_dim >= 800
 
-    # Adaptive pyramid levels: more for larger data
-    num_levels = 4 if max(z_dim, y_dim, x_dim) > 600 else 3
+    # Adaptive iterations: gradually increase with data size
+    if is_small:
+        iters = 3
+    elif is_medium:
+        iters = 5
+    else:  # large
+        iters = 8
+
+    # Adaptive pyramid levels: more levels for larger data
+    if is_small:
+        num_levels = 2
+    elif is_medium:
+        num_levels = 3
+    else:  # large
+        num_levels = 4
 
     # Adaptive scale: finer for small data, coarser for large
-    scale = 0.4 if max(z_dim, y_dim, x_dim) > 600 else 0.6
+    if is_small:
+        scale = 0.7  # Less downsampling for small volumes
+    elif is_medium:
+        scale = 0.5
+    else:  # large
+        scale = 0.3  # More aggressive downsampling for large volumes
 
     # Adaptive spatial size: larger for bigger data
-    spatial_size = 8 if max(z_dim, y_dim, x_dim) > 600 else 5
+    if is_small:
+        spatial_size = 5
+    elif is_medium:
+        spatial_size = 7
+    else:  # large
+        spatial_size = 9
 
     # Adaptive presmoothing: less for small data, more for noisy/large
-    presmoothing = 6 if max(z_dim, y_dim, x_dim) > 600 else 3
+    if is_small:
+        presmoothing = 2
+    elif is_medium:
+        presmoothing = 4
+    else:  # large
+        presmoothing = 6
 
-    # filter type: "gaussian" for quality, "box" for speed
-    filter_type = "gaussian"
+    # Filter type: gaussian for quality, box for speed with very large volumes
+    filter_type = "box" if is_large else "gaussian"
+
+    # Log selected parameters
+    print(f"Volume max dimension: {max_dim} pixels")
+    print(f"Size category: {'Small' if is_small else ('Medium' if is_medium else 'Large')}")
+    print(f"Parameters: iters={iters}, levels={num_levels}, scale={scale}, spatial_size={spatial_size}, presmoothing={presmoothing}, filter={filter_type}")
 
     successful_frames = [] 
 
