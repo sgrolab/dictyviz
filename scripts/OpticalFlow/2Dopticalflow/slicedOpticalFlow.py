@@ -219,7 +219,8 @@ def make_movie(output_dir, fps=10):
         # create a copy of the flow visualization and overlay the legend
         final_frame[pos_y:pos_y+legend_h, pos_x:pos_x+legend_w] = legend
 
-        imageio.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), final_frame)  # save flow image
+        # save the flow image with cv2
+        cv2.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), final_frame)
 
         writer.write(final_frame)  # write frame to video
 

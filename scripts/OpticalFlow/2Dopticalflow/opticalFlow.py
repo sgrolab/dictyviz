@@ -173,8 +173,9 @@ def compute_farneback_optical_flow(zarr_path, channel, cropID, output_dir, log_f
 
         # create a copy of the flow visualization and overlay the legend
         final_frame[pos_y:pos_y+legend_h, pos_x:pos_x+legend_w] = legend
-
-        imageio.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), final_frame)  # save flow image
+        
+        # save the flow image with cv2
+        cv2.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), final_frame)
 
         flow_list.append(flow)  # append flow data to list
         prev_frame = curr_frame  # update previous frame
