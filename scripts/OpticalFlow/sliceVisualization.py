@@ -63,21 +63,26 @@ def plot_flow(vx, vy, vz, conf, raw_slice, axis, slice_idx, frame_number, save_p
     
     # Plot 2: HSV flow visualization
 
-    # Plot 2: HSV flow visualization
-
     # Generate color wheel legend with pixel by pixel size 
     legend = opticalFlow.create_flow_color_wheel(1906, 1440)
-    legend_rgb = cv2.cvtColor(legend, cv2.COLOR_BGR2RGB)
-    legend_rgb = np.rot90(legend_rgb, k=-1)
 
     # Overlay legend in bottom right corner of the flow image
     h, w = rgb.shape[:2]
-    lh, lw = legend_rgb.shape[:2]
+    lh, lw = legend.shape[:2] 
     pad = 20
     pos_x = w - lw - pad
     pos_y = h - lh - pad
-    rgb_overlay = rgb.copy()
-    rgb_overlay[pos_y:pos_y+lh, pos_x:pos_x+lw] = legend_rgb
+
+    # For OpenCV saving (BGR format)
+    rgb_overlay_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    rgb_overlay_bgr[pos_y:pos_y+lh, pos_x:pos_x+lw] = legend  # Legend is already BGR
+    cv2.imwrite(save_path, rgb_overlay_bgr)
+
+    # For matplotlib display (RGB format)
+    # Convert legend from BGR to RGB for matplotlib
+    legend_rgb = cv2.cvtColor(legend, cv2.COLOR_BGR2RGB)
+    rgb_overlay = rgb.copy()  # Keep original RGB for matplotlib
+    rgb_overlay[pos_y:pos_y+lh, pos_x:pos_x+lw] = legend_rgb  # Add RGB legend to RGB image
 
     # Show the overlay in the subplot
     axs[0, 1].imshow(rgb_overlay, origin='lower')

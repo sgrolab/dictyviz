@@ -171,7 +171,7 @@ def compute_farneback_optical_flow(zarr_path, cropID, output_dir, log_file):
         # create a copy of the flow visualization and overlay the legend
         final_frame[pos_y:pos_y+legend_h, pos_x:pos_x+legend_w] = legend
 
-        imageio.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), final_frame)  # save flow image
+        cv2.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), final_frame)  # save flow image
 
         flow_list.append(flow)  # append flow data to list
         prev_frame = curr_frame  # update previous frame
@@ -202,8 +202,8 @@ def make_movie(output_dir, output_filename="optical_flow_movie.mp4", fps=10):
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-    for fname in frames:
-
+    for fname in frames: 
+        
         img = cv2.imread(os.path.join(output_dir, fname))
         if img is not None:
             writer.write(img)
@@ -237,7 +237,7 @@ def create_flow_color_wheel(width, height):
                 continue
             
             # calculate angle and normalize to 0-360 degrees
-            angle = (np.degrees(np.arctan2(-dy, dx)) + 250) % 360 
+            angle = (np.degrees(np.arctan2(-dy, dx))) % 360 
             
             # normalize distance to 0-1 range for brightness
             normalized_distance = distance / max_radius
@@ -326,7 +326,7 @@ def main():
     
     cropID = sys.argv[2] if len(sys.argv) > 2 else ""
 
-    output_dir = os.path.join(os.path.dirname(zarr_path), "optical_flow_output")
+    output_dir = os.path.join(os.path.dirname(zarr_path), "optical_flow_output2")
     os.makedirs(output_dir, exist_ok=True)
     
     log_path = os.path.join(output_dir, "opticalFlow_out.txt")
