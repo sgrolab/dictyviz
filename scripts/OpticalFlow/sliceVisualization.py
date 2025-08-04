@@ -7,9 +7,10 @@ matplotlib.use('Agg')  # Use non-interactive backend for cluster
 import matplotlib.pyplot as plt
 import argparse
 import zarr 
-from .helpers import flowLoader
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from OpticalFlow.helpers import flowLoader
 from scipy.ndimage import gaussian_filter
-from .optical2Dflow import opticalFlow
+from OpticalFlow.optical2Dflow import opticalFlow
 
 # Adaptive local normalization for flow in z 
 from skimage.exposure import equalize_adapthist

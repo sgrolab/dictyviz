@@ -1,7 +1,8 @@
 import os
 import sys 
-from .helpers import analyzeRegions
-from .helpers import flowLoader
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from OpticalFlow.helpers import analyzeRegions
+from OpticalFlow.helpers import flowLoader
 
 def main():
     results_dir = sys.argv[1]

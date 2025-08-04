@@ -1,7 +1,8 @@
 import numpy as np
 import sys
 import os
-from .helpers import flowLoader
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from OpticalFlow.helpers import flowLoader
 from tqdm import tqdm
 
 def main():
