@@ -44,8 +44,8 @@ def compute_farneback_optical_flow(zarr_path, channel, cropID, output_dir, log_f
     height = maxZ.shape[3]
     width = maxZ.shape[4]
 
-    hsv = np.zeros((height, width, 3), dtype=np.uint8)  # initialize hsv image
-    hsv[..., 1] = 255  # set saturation to maximum
+    # hsv = np.zeros((height, width, 3), dtype=np.uint8)  # initialize hsv image
+    # hsv[..., 1] = 255  # set saturation to maximum
     flow_list = []  # list to store optical flow data
     
     prev_frame_raw = maxZ[0,channel,0,:,:]
@@ -141,41 +141,32 @@ def compute_farneback_optical_flow(zarr_path, channel, cropID, output_dir, log_f
             # reconstruct flow
             flow = np.dstack((flow_x_fixed, flow_y_fixed))
         
-        mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])  # calculate magnitude and angle
-        hsv[..., 0] = ang * 180 / np.pi / 2  # set hue based on angle
-        hsv[..., 2] = np.clip(mag * (255/10), 0, 255).astype(np.uint8) # takes raw magnitude values and will scale anything above a magntitude of 15 to a brightness of 255
+        # mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])  # calculate magnitude and angle
+        # hsv[..., 0] = ang * 180 / np.pi / 2  # set hue based on angle
+        # hsv[..., 2] = np.clip(mag * (255/10), 0, 255).astype(np.uint8) # takes raw magnitude values and will scale anything above a magntitude of 15 to a brightness of 255
 
-        rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # convert hsv to bgr
+        # rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # convert hsv to bgr
 
-        # Create histogram visualization
-        #hist_image = create_flow_histogram(mag, width, height)
-        #hist_h, hist_w = hist_image.shape[:2]
+        # # Create a copy of the flow visualization
+        # final_frame = rgb_flow.copy()
 
-        # Position histogram in top-left corner with padding
-        #hist_pad = 10
-        #hist_pos_x = hist_pad
-        #hist_pos_y = hist_pad
+        # # Add histogram to the frame
+        # #final_frame[hist_pos_y:hist_pos_y+hist_h, hist_pos_x:hist_pos_x+hist_w] = hist_image
 
-        # Create a copy of the flow visualization
-        final_frame = rgb_flow.copy()
+        # # create and add the legend to each frame 
+        # legend = create_flow_color_wheel(width, height)
+        # legend_h, legend_w = legend.shape[:2]
 
-        # Add histogram to the frame
-        #final_frame[hist_pos_y:hist_pos_y+hist_h, hist_pos_x:hist_pos_x+hist_w] = hist_image
+        # # position in bottom right with padding
+        # pad = 10
+        # pos_x = width - legend_w - pad
+        # pos_y = height - legend_h - pad
 
-        # create and add the legend to each frame 
-        legend = create_flow_color_wheel(width, height)
-        legend_h, legend_w = legend.shape[:2]
-
-        # position in bottom right with padding
-        pad = 10
-        pos_x = width - legend_w - pad
-        pos_y = height - legend_h - pad
-
-        # create a copy of the flow visualization and overlay the legend
-        final_frame[pos_y:pos_y+legend_h, pos_x:pos_x+legend_w] = legend
+        # # create a copy of the flow visualization and overlay the legend
+        # final_frame[pos_y:pos_y+legend_h, pos_x:pos_x+legend_w] = legend
         
-        # save the flow image with cv2
-        cv2.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), final_frame)
+        # # save the flow image with cv2
+        # cv2.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), final_frame)
 
         flow_list.append(flow)  # append flow data to list
         prev_frame = curr_frame  # update previous frame
@@ -186,33 +177,52 @@ def compute_farneback_optical_flow(zarr_path, channel, cropID, output_dir, log_f
     print(f"Saved {frame_index} flow frames and raw data to: {output_dir}", file=log_file)
 
 # function to create a movie from optical flow images
-def make_movie(output_dir, output_filename="optical_flow_movie.mp4", fps=10):
-    frames = sorted([f for f in os.listdir(output_dir) if f.startswith("flow_") and f.endswith(".png")])
-    
-    if not frames:
-        print(f"no flow png frames found in: {output_dir}")
-        return
+def make_movie(output_dir, fps=10):
 
-    first_frame_path = os.path.join(output_dir, frames[0])
-    frame = cv2.imread(first_frame_path)
-    if frame is None:
-        print(f"error reading first frame: {first_frame_path}")
-        return
-
-    height, width, _ = frame.shape
+    output_filename="optical_flow_movie.mp4"
     output_path = os.path.join(output_dir, output_filename)
+
+    # load raw flow data
+    flow_raw = np.load(os.path.join(output_dir, "flow_raw.npy"))
+
+    num_frames, height, width, _ = flow_raw.shape
+
+    hsv = np.zeros((height, width, 3), dtype=np.uint8)  # initialize hsv image
+    hsv[..., 1] = 255  # set saturation to maximum
     
     # use h.264 codec for better compression and compatibility
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-    for fname in frames:
+    for frame_index in range(num_frames):
+        curr_frame_flow = flow_raw[frame_index]
 
-        img = cv2.imread(os.path.join(output_dir, fname))
-        if img is not None:
-            writer.write(img)
-        else:
-            print(f"warning: skipping unreadable frame {fname}")
+        mag, ang = cv2.cartToPolar(curr_frame_flow[..., 0], curr_frame_flow[..., 1])
+        hsv[..., 0] = ang * 180 / np.pi / 2
+        hsv[..., 2] = np.clip(mag * (255/10), 0, 255).astype(np.uint8)
+
+        rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+        # Create a copy of the flow visualization
+        final_frame = rgb_flow.copy()
+
+        # create and add the legend to each frame
+        legend = create_flow_color_wheel(width, height)
+        legend_h, legend_w = legend.shape[:2]
+
+        # position in bottom right with padding
+        pad = 10
+        pos_x = width - legend_w - pad
+        pos_y = height - legend_h - pad
+
+        # create a copy of the flow visualization and overlay the legend
+        final_frame[pos_y:pos_y+legend_h, pos_x:pos_x+legend_w] = legend
+
+        # save the flow image with cv2
+        cv2.imwrite(os.path.join(output_dir, f"flow_{frame_index:04d}.png"), final_frame)
+
+        # write the frame to the video
+        writer.write(final_frame)
 
     writer.release()
     print(f"movie saved to: {output_path}")
@@ -495,15 +505,58 @@ def main():
         print("zarr path:", zarr_path, file=f)
         print("crop id:", cropID, file=f)
         print("output directory:", output_dir, file=f)
-        print("optical flow parameters:", params, file=f)
-        print("optical flow calculation started at", datetime.datetime.now(), "\n", file=f)
+        # check if flow_raw.npy already exists
+        if os.path.exists(os.path.join(output_dir, "flow_raw.npy")):
+            print("flow_raw.npy already exists in", output_dir, file=f)
+            print("skipping optical flow calculation.\n", file=f)
+        else:
+            print("optical flow calculation started at", datetime.datetime.now(), file=f)
+            print("optical flow parameters:", params, file=f)
+            compute_farneback_optical_flow(zarr_path, channel, cropID, output_dir, f, params)
+            print("optical flow calculation completed at", datetime.datetime.now(), "\n", file=f)
 
-        compute_farneback_optical_flow(zarr_path, channel, cropID, output_dir, f, params)
+        # check if movie already exists
+        if os.path.exists(os.path.join(output_dir, "optical_flow_movie.mp4")):
+            print("optical flow movie already exists in", output_dir, file=f)
+            print("skipping movie generation for optical flow.\n", file=f)
+        else:
+            print("generating movie...", file=f)
+            make_movie(output_dir)
+            print("movie generation completed at", datetime.datetime.now(), "\n", file=f)
 
-        print("optical flow calculation completed at", datetime.datetime.now(), "\n", file=f)
-        print("generating movie...", file=f)
+        # check if magnitude and variance maps already exist
+        if os.path.exists(os.path.join(output_dir, "magnitude_map.npy")) and os.path.exists(os.path.join(output_dir, "variance_map.npy")):
+            # load existing analysis results
+            magnitude_map = np.load(os.path.join(output_dir, "magnitude_map.npy"))
+            variance_map = np.load(os.path.join(output_dir, "variance_map.npy"))
 
-    make_movie(output_dir)
+            print("magnitude/variance analysis already exists in", output_dir, file=f)
+            print("skipping magnitude/variance analysis", "\n", file=f)
+        else:
+            print("performing magnitude/variance analysis...", file=f)
+
+            # calculate magnitude and variance maps for determining optimal regions
+            flow_raw = np.load(os.path.join(output_dir, "flow_raw.npy"))
+            vx = flow_raw[..., 0]
+            vy = flow_raw[..., 1]
+
+            magnitude_map, variance_map = calculate_mag_var(vx, vy, f, window_size=40)
+
+            # save the magnitude and variance maps
+            np.save(os.path.join(output_dir, "magnitude_map.npy"), magnitude_map)
+            np.save(os.path.join(output_dir, "variance_map.npy"), variance_map)
+
+        print("finding optimal regions...", file=f)
+        optimal_regions = find_optimal_regions(magnitude_map, variance_map, top_k=5, suppression_radius=35)
+        # save analysis results
+        print("saving analysis results...", file=f)
+        regions_file = save_analysis_results(optimal_regions, output_dir)
+        print(f"✓ Analysis results saved to: {regions_file}", file=f)
+
+        # crop regions from zarr
+        print("cropping regions from zarr...", file=f)
+        #crop_regions_from_zarr(zarr_path, output_dir, optimal_regions, f, crop_size=256)
+        print("cropping skipped", file=f)
 
 # entry point
 if __name__ == "__main__":
