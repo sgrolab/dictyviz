@@ -9,7 +9,7 @@ import argparse
 import zarr 
 import helpers.flowLoader as flowLoader
 from scipy.ndimage import gaussian_filter
-import opticalFlow2D.opticalFlow as opticalFlow
+import optical2Dflow.opticalFlow as opticalFlow
 
 # Adaptive local normalization for flow in z 
 from skimage.exposure import equalize_adapthist
