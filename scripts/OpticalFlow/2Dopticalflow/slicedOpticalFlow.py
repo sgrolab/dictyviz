@@ -525,6 +525,7 @@ def main():
                 print("skipping optical flow calculation for", dim, "\n", file=f)
             else:
                 print("optical flow calculation started at", datetime.datetime.now(), file=f)
+                print("optical flow parameters:", params, file=f)
                 compute_farneback_optical_flow(zarr_path, channel, dim, cropID, output_dir, f, params)
                 print("optical flow calculation completed at", datetime.datetime.now(), "\n", file=f)
 
