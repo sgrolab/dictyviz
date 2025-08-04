@@ -1,7 +1,7 @@
 import numpy as np
 import sys
 import os
-import helpers.flowLoader as flowLoader
+from .helpers import flowLoader
 from tqdm import tqdm
 
 def main():

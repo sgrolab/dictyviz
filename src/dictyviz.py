@@ -12,6 +12,7 @@ from PIL import ImageFont, ImageDraw, Image
 from dask.distributed import Client, wait
 import numpy as np
 from tqdm import tqdm
+from scipy.ndimage import gaussian_filter
 
 
 def createRootStore(zarrFile):
@@ -627,9 +628,117 @@ def scaleXZYZ_RGB(im, zToXYRatio):
     
     return scaledIm
 
+def normalize_vz_with_tiling(vz_data, tiles_y=4, tiles_x=3, sigma_smooth=3, sigma_blend=1):
+    """
+    Normalize z-flow data using per-tile mean subtraction to eliminate tiling artifacts.
+    
+    Args:
+        vz_data: The z-component flow data (Z,Y,X) or (Y,X)
+        tiles_y: Number of tiles in Y direction
+        tiles_x: Number of tiles in X direction
+        sigma_smooth: Gaussian smoothing sigma before tiling
+        sigma_blend: Gaussian smoothing sigma after tiling to blend boundaries
+        
+    Returns:
+        Normalized z-flow data with tiling artifacts reduced
+    """
+    # Apply initial smoothing to reduce noise
+    vz_smoothed = gaussian_filter(vz_data, sigma=sigma_smooth)
+    
+    # Get dimensions
+    if len(vz_data.shape) == 3:
+        # Handle 3D case
+        depth, height, width = vz_smoothed.shape
+        vz_normalized = np.zeros_like(vz_smoothed)
+        
+        # Process each depth slice
+        for d in range(depth):
+            slice_data = vz_smoothed[d]
+            normalized_slice = np.zeros_like(slice_data)
+            
+            # Calculate tile dimensions
+            tile_height = height // tiles_y
+            tile_width = width // tiles_x
+            
+            # Process each tile independently
+            for i in range(tiles_y):
+                for j in range(tiles_x):
+                    # Define tile boundaries
+                    y_start = i * tile_height
+                    y_end = min((i + 1) * tile_height, height)
+                    x_start = j * tile_width
+                    x_end = min((j + 1) * tile_width, width)
+                    
+                    # Extract tile
+                    tile = slice_data[y_start:y_end, x_start:x_end]
+                    
+                    # Normalize tile to have zero mean
+                    tile_mean = np.mean(tile)
+                    
+                    if np.abs(tile_mean) > 1e-6:  # Avoid division by zero or normalization of uniform tiles
+                        normalized_tile = (tile - tile_mean)
+                        
+                        # Enhance contrast with percentile clipping
+                        p_low, p_high = np.percentile(normalized_tile, [5, 95])
+                        if p_high > p_low:
+                            normalized_tile = np.clip(normalized_tile, p_low, p_high)
+                            normalized_tile = (normalized_tile - p_low) / (p_high - p_low)
+                    else:
+                        normalized_tile = np.zeros_like(tile)
+                    
+                    # Store normalized tile
+                    normalized_slice[y_start:y_end, x_start:x_end] = normalized_tile
+            
+            # Smooth tile boundaries
+            normalized_slice = gaussian_filter(normalized_slice, sigma=sigma_blend)
+            vz_normalized[d] = normalized_slice
+    else:
+        # Handle 2D case
+        height, width = vz_smoothed.shape
+        vz_normalized = np.zeros_like(vz_smoothed)
+        
+        # Calculate tile dimensions
+        tile_height = height // tiles_y
+        tile_width = width // tiles_x
+        
+        # Process each tile independently
+        for i in range(tiles_y):
+            for j in range(tiles_x):
+                # Define tile boundaries
+                y_start = i * tile_height
+                y_end = min((i + 1) * tile_height, height)
+                x_start = j * tile_width
+                x_end = min((j + 1) * tile_width, width)
+                
+                # Extract tile
+                tile = vz_smoothed[y_start:y_end, x_start:x_end]
+                
+                # Normalize tile to have zero mean
+                tile_mean = np.mean(tile)
+                
+                if np.abs(tile_mean) > 1e-6:  # Avoid division by zero or normalization of uniform tiles
+                    normalized_tile = (tile - tile_mean)
+                    
+                    # Enhance contrast with percentile clipping
+                    p_low, p_high = np.percentile(normalized_tile, [5, 95])
+                    if p_high > p_low:
+                        normalized_tile = np.clip(normalized_tile, p_low, p_high)
+                        normalized_tile = (normalized_tile - p_low) / (p_high - p_low)
+                else:
+                    normalized_tile = np.zeros_like(tile)
+                
+                # Store normalized tile
+                vz_normalized[y_start:y_end, x_start:x_end] = normalized_tile
+        
+        # Smooth tile boundaries
+        vz_normalized = gaussian_filter(vz_normalized, sigma=sigma_blend)
+    
+    # Scale to [0, 1] range instead of [-1, 1]
+    return vz_normalized
+
 def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
     """Generates an optical flow orthomax video with proper layout"""
-
+    
     filename = generateUniqueFilename(channel.name + '_optical_flow_orthomax_', ext)
     voxelDims = channel.voxelDims
 
@@ -638,9 +747,16 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
     except:
         imagingFreq = 1
 
-    flowMaxZ = root['flow_maxz'] # (T,4,Y,X)
-    flowMaxY = root['flow_maxy'] # (T,4,Z,X)
-    flowMaxX = root['flow_maxx'] # (T,4,Z,Y)
+    # Load the optical flow data
+    flowMaxZ = root['flow_maxz']  # (T,4,Y,X)
+    flowMaxY = root['flow_maxy']  # (T,4,Z,X)
+    flowMaxX = root['flow_maxx']  # (T,4,Z,Y)
+    
+    # Print dimensions for debugging
+    print(f"Flow data dimensions:")
+    print(f"  XY: {flowMaxZ.shape}")
+    print(f"  XZ: {flowMaxY.shape}")
+    print(f"  YZ: {flowMaxX.shape}")
     
     lenT = flowMaxZ.shape[0]
     lenZ = flowMaxX.shape[2]
@@ -672,15 +788,17 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
     )
     scaleBarXY._setFont()
     
-    vid = cv2.VideoWriter(filename,cv2.VideoWriter_fourcc(*'MJPG'),10,(movieWidth,movieHeight),1)
+    print(f"Movie dimensions: {movieWidth}x{movieHeight}")
+    print(f"Scaled Z length: {scaledLenZ}")
+    
+    vid = cv2.VideoWriter(filename, cv2.VideoWriter_fourcc(*'MJPG'), 10, (movieWidth, movieHeight), 1)
 
     try: 
         for i in tqdm(range(lenT)):
-
             # Initialize RGB frame 
             frame = np.zeros([movieHeight, movieWidth, 3], dtype=np.uint8)
 
-            # Extract RGBM channels for this timepoint
+            # Extract RGB channels for this timepoint (skip magnitude, which is channel 3)
             red_xy = flowMaxZ[i, 0]     # (Y, X)
             green_xy = flowMaxZ[i, 1]   # (Y, X) 
             blue_xy = flowMaxZ[i, 2]    # (Y, X)
@@ -692,35 +810,114 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
             red_yz = flowMaxX[i, 0]     # (Z, Y)
             green_yz = flowMaxX[i, 1]   # (Z, Y)
             blue_yz = flowMaxX[i, 2]    # (Z, Y)
-
+            
+            # Define a function to enhance contrast in each channel
+            def enhance_channel(channel, percentile_low=5, percentile_high=95):
+                """Enhance contrast with percentile-based normalization"""
+                p_low, p_high = np.percentile(channel, [percentile_low, percentile_high])
+                if p_high > p_low:
+                    # Clip outliers and rescale to [0,1]
+                    enhanced = np.clip(channel, p_low, p_high)
+                    enhanced = (enhanced - p_low) / (p_high - p_low)
+                    # Apply slight gamma correction to reduce overall brightness
+                    enhanced = enhanced ** 1.2  # Gamma > 1 darkens the image
+                    return enhanced
+                return channel
+                
+            # Define a function to balance RGB channels
+            def balance_channels(r, g, b):
+                """Balance RGB channels to prevent color dominance"""
+                # Compute mean for each channel
+                r_mean, g_mean, b_mean = np.mean(r), np.mean(g), np.mean(b)
+                
+                # Calculate the maximum mean
+                max_mean = max(r_mean, g_mean, b_mean)
+                
+                # Only scale if channel means are significant
+                if max_mean > 1e-6:
+                    # Scale each channel based on mean ratios
+                    if r_mean > 1e-6:
+                        r = r * (max_mean / r_mean) * 0.9  # Slight reduction for red
+                    if g_mean > 1e-6:
+                        g = g * (max_mean / g_mean) * 1.1  # Slight boost for green
+                    if b_mean > 1e-6:
+                        # Reduce blue more significantly to fix the blue dominance
+                        b = b * (max_mean / b_mean) * 0.6
+                
+                return r, g, b
+            
+            # Apply enhancement to each channel
+            red_xy = enhance_channel(red_xy)
+            green_xy = enhance_channel(green_xy)
+            blue_xy = enhance_channel(blue_xy)
+            
+            red_xz = enhance_channel(red_xz)
+            green_xz = enhance_channel(green_xz)
+            # Apply tile-based normalization to z-component (blue channel)
+            blue_xz = normalize_vz_with_tiling(blue_xz)
+            
+            red_yz = enhance_channel(red_yz)
+            green_yz = enhance_channel(green_yz)
+            # Apply tile-based normalization to z-component (blue channel)
+            blue_yz = normalize_vz_with_tiling(blue_yz)
+            
+            # Balance channels to avoid blue dominance
+            red_xz, green_xz, blue_xz = balance_channels(red_xz, green_xz, blue_xz)
+            red_yz, green_yz, blue_yz = balance_channels(red_yz, green_yz, blue_yz)
+            
+            # Further tone down the blue channel for XZ and YZ projections
+            blue_xz = blue_xz * 0.7
+            blue_yz = blue_yz * 0.7
+            
+            # Set brightness level (decreased from 1.4 to 1.0 to reduce excessive brightness)
+            brightness_boost = 1.0
+            
             # Scale values from [0,1] to [0,255] for display
-            red_xy = np.clip(red_xy * 255, 0, 255).astype(np.uint8)
-            green_xy = np.clip(green_xy * 255, 0, 255).astype(np.uint8)
-            blue_xy = np.clip(blue_xy * 255, 0, 255).astype(np.uint8)
+            red_xy = np.clip(red_xy * 255 * brightness_boost, 0, 255).astype(np.uint8)
+            green_xy = np.clip(green_xy * 255 * brightness_boost, 0, 255).astype(np.uint8)
+            blue_xy = np.clip(blue_xy * 255 * brightness_boost, 0, 255).astype(np.uint8)
             
-            red_xz = np.clip(red_xz * 255, 0, 255).astype(np.uint8)
-            green_xz = np.clip(green_xz * 255, 0, 255).astype(np.uint8)
-            blue_xz = np.clip(blue_xz * 255, 0, 255).astype(np.uint8)
+            red_xz = np.clip(red_xz * 255 * brightness_boost, 0, 255).astype(np.uint8)
+            green_xz = np.clip(green_xz * 255 * brightness_boost, 0, 255).astype(np.uint8)
+            blue_xz = np.clip(blue_xz * 255 * brightness_boost, 0, 255).astype(np.uint8)
             
-            red_yz = np.clip(red_yz * 255, 0, 255).astype(np.uint8)
-            green_yz = np.clip(green_yz * 255, 0, 255).astype(np.uint8)
-            blue_yz = np.clip(blue_yz * 255, 0, 255).astype(np.uint8)
+            red_yz = np.clip(red_yz * 255 * brightness_boost, 0, 255).astype(np.uint8)
+            green_yz = np.clip(green_yz * 255 * brightness_boost, 0, 255).astype(np.uint8)
+            blue_yz = np.clip(blue_yz * 255 * brightness_boost, 0, 255).astype(np.uint8)
 
             # YZ PROJECTION - TOP STRIP
             rgb_yz = np.stack([blue_yz, green_yz, red_yz], axis=-1)  # BGR for OpenCV
             rgb_yz_scaled = scaleXZYZ_RGB(rgb_yz, zToXYRatio)
             rgb_yz_transposed = np.transpose(rgb_yz_scaled, (1, 0, 2))  # (Y, scaledZ, 3)
-            frame[0:scaledLenZ, (scaledLenZ+gap):movieWidth] = rgb_yz_transposed
+            
+            # Calculate placement bounds
+            yz_height = min(scaledLenZ, rgb_yz_transposed.shape[0])
+            yz_width = min(movieWidth - (scaledLenZ + gap), rgb_yz_transposed.shape[1])
+            
+            # Place the array, ensuring we don't exceed frame boundaries
+            frame[0:yz_height, (scaledLenZ+gap):(scaledLenZ+gap+yz_width)] = rgb_yz_transposed[:yz_height, :yz_width]
 
             # XZ PROJECTION - LEFT STRIP  
             rgb_xz = np.stack([blue_xz, green_xz, red_xz], axis=-1)  # BGR for OpenCV
             rgb_xz_flipped = np.flip(rgb_xz, axis=0)  # Flip like regular function
             rgb_xz_scaled = scaleXZYZ_RGB(rgb_xz_flipped, zToXYRatio)
-            frame[(scaledLenZ+gap):movieHeight, 0:scaledLenZ] = rgb_xz_scaled
+            
+            # Calculate placement bounds
+            xz_height = min(movieHeight - (scaledLenZ + gap), rgb_xz_scaled.shape[0])
+            xz_width = min(scaledLenZ, rgb_xz_scaled.shape[1])
+            
+            # Place the array, ensuring we don't exceed frame boundaries
+            frame[(scaledLenZ+gap):(scaledLenZ+gap+xz_height), 0:xz_width] = rgb_xz_scaled[:xz_height, :xz_width]
 
             # XY PROJECTION - MAIN VIEW (bottom-right)
             rgb_xy = np.stack([blue_xy, green_xy, red_xy], axis=-1)  # BGR for OpenCV
-            frame[(scaledLenZ+gap):movieHeight, (scaledLenZ+gap):movieWidth] = rgb_xy
+            
+            # Calculate placement bounds
+            xy_height = min(movieHeight - (scaledLenZ + gap), rgb_xy.shape[0])
+            xy_width = min(movieWidth - (scaledLenZ + gap), rgb_xy.shape[1])
+            
+            # Place the array, ensuring we don't exceed frame boundaries
+            frame[(scaledLenZ+gap):(scaledLenZ+gap+xy_height), (scaledLenZ+gap):(scaledLenZ+gap+xy_width)] = rgb_xy[:xy_height, :xy_width]
 
             # add scale bar
             frame = scaleBarXY._addScaleBar(frame)
@@ -740,6 +937,8 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
 
     except Exception as e:
         print(f"Error creating optical flow video: {e}")
+        import traceback
+        traceback.print_exc()
         vid.release()
         cv2.destroyAllWindows()
 

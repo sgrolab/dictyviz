@@ -1,7 +1,7 @@
 import os
 import sys 
-import helpers.analyzeRegions as analyzeRegions
-import helpers.flowLoader as flowLoader
+from .helpers import analyzeRegions
+from .helpers import flowLoader
 
 def main():
     results_dir = sys.argv[1]
