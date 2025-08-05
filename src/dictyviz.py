@@ -754,7 +754,7 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
     try:
         imagingFreq = getImagingFreqFromJSON(root.store.path + '/../../parameters.json')
     except:
-        imagingFreq = 1
+        imagingFreq = 10
 
     # Load the optical flow data
     flowMaxZ = root['flow_maxz']  # (T,4,Y,X) - XY projections over time
@@ -772,15 +772,10 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
     lenY = flowMaxZ.shape[2] 
     lenX = flowMaxZ.shape[3]
 
-    # Define layout dimensions
-    gap = 15  # Space between projections
-    xy_width, xy_height = 750, 800      # Main view (bottom-left)
-    xz_width, xz_height = 150, 800      # Side strip (bottom-right)
-    yz_width, yz_height = 750, 150      # Top strip
-    
     # Calculate total video dimensions
-    movieWidth = xy_width + gap + xz_width
-    movieHeight = yz_height + gap + xy_height
+    gap = 20  # Space between projections
+    movieWidth = lenX + gap + lenZ
+    movieHeight = lenZ + gap + lenY
     
     print(f"Video layout: {movieWidth}x{movieHeight}")
 
@@ -792,7 +787,7 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
 
     scaleBarXY = scaleBar(
         posY = movieHeight - 10,
-        posX = xy_width - 10, 
+        posX = lenX - 10, 
         length = scaleBarLength,
         pxPerMicron = 1/voxelDims[0],
         font = None,
@@ -814,23 +809,23 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
             red_yz, green_yz, blue_yz = flowMaxX[i, 0], flowMaxX[i, 1], flowMaxX[i, 2]
             
             # Process XY projection (standard contrast enhancement)
-            red_xy = enhance_channel_contrast(red_xy)
-            green_xy = enhance_channel_contrast(green_xy)
-            blue_xy = enhance_channel_contrast(blue_xy)
+            # red_xy = enhance_channel_contrast(red_xy)
+            # green_xy = enhance_channel_contrast(green_xy)
+            # blue_xy = enhance_channel_contrast(blue_xy)
             
             # Process XZ projection (with z-component normalization for blue channel)
-            red_xz = enhance_channel_contrast(red_xz)
-            green_xz = enhance_channel_contrast(green_xz)
-            blue_xz = normalize_vz_with_tiling(blue_xz)  # Special processing for z-flow
-            red_xz, green_xz, blue_xz = balance_rgb_channels(red_xz, green_xz, blue_xz)
-            blue_xz = blue_xz * 0.7  # Further reduce blue dominance
+            # red_xz = enhance_channel_contrast(red_xz)
+            # green_xz = enhance_channel_contrast(green_xz)
+            # blue_xz = normalize_vz_with_tiling(blue_xz)  # Special processing for z-flow
+            # red_xz, green_xz, blue_xz = balance_rgb_channels(red_xz, green_xz, blue_xz)
+            # blue_xz = blue_xz * 0.7  # Further reduce blue dominance
             
             # Process YZ projection (with z-component normalization for blue channel)
-            red_yz = enhance_channel_contrast(red_yz)
-            green_yz = enhance_channel_contrast(green_yz)
-            blue_yz = normalize_vz_with_tiling(blue_yz)  # Special processing for z-flow
-            red_yz, green_yz, blue_yz = balance_rgb_channels(red_yz, green_yz, blue_yz)
-            blue_yz = blue_yz * 0.7  # Further reduce blue dominance
+            # red_yz = enhance_channel_contrast(red_yz)
+            # green_yz = enhance_channel_contrast(green_yz)
+            # blue_yz = normalize_vz_with_tiling(blue_yz)  # Special processing for z-flow
+            # red_yz, green_yz, blue_yz = balance_rgb_channels(red_yz, green_yz, blue_yz)
+            # blue_yz = blue_yz * 0.7  # Further reduce blue dominance
             
             # Convert to 8-bit values
             brightness = 1.0
@@ -849,9 +844,9 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
 
             # Place XY projection (bottom-left, main view)
             try:
-                resized_xy = resize_with_smoothing(rgb_xy, xy_width, xy_height)
-                y_start = yz_height + gap
-                frame[y_start:y_start + xy_height, 0:xy_width] = resized_xy
+                #resized_xy = resize_with_smoothing(rgb_xy, xy_width, xy_height)
+                y_start = lenZ + gap
+                frame[y_start:y_start + lenY, 0:lenX] = rgb_xy
             except Exception as e:
                 print(f"Error placing XY projection: {e}")
 
@@ -859,10 +854,8 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
             try:
                 # Flip vertically so Z increases upward
                 rgb_xz_flipped = np.flip(rgb_xz, axis=0)
-                resized_xz = resize_with_smoothing(rgb_xz_flipped, xz_width, xz_height)
-                y_start = yz_height + gap
-                x_start = xy_width + gap
-                frame[y_start:y_start + xz_height, x_start:x_start + xz_width] = resized_xz
+                #resized_xz = resize_with_smoothing(rgb_xz_flipped, xz_width, xz_height)
+                frame[0:lenZ, 0:lenX] = rgb_xz_flipped
             except Exception as e:
                 print(f"Error placing XZ projection: {e}")
 
@@ -870,8 +863,10 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
             try:
                 # Transpose from (Z,Y,3) to (Y,Z,3) for proper orientation
                 rgb_yz_transposed = np.transpose(rgb_yz, (1, 0, 2))
-                resized_yz = resize_with_smoothing(rgb_yz_transposed, yz_width, yz_height)
-                frame[0:yz_height, 0:yz_width] = resized_yz
+                #resized_yz = resize_with_smoothing(rgb_yz_transposed, yz_width, yz_height)
+                y_start = lenZ + gap
+                x_start = lenX + gap
+                frame[y_start:y_start + lenY, x_start:x_start + lenZ] = rgb_yz_transposed
             except Exception as e:
                 print(f"Error placing YZ projection: {e}")
 
