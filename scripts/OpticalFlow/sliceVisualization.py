@@ -31,17 +31,17 @@ def create_hsv_flow(vx, vy, max_flow=None):
     hsv[..., 1] = 255  # Set saturation to maximum
     hsv[..., 2] = np.clip(mag * (255/max_flow), 0, 255).astype(np.uint8)  # Value based on magnitude
     
-    # Convert HSV to RGB
-    rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+    # Convert HSV to BGR
+    bgr_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
     
-    return rgb_flow, mag, max_flow
+    return bgr_flow, mag, max_flow
 
 def plot_flow(vx, vy, vz, conf, raw_slice, axis, slice_idx, frame_number, save_path=None, show_arrows=True, arrow_step=10):
     
     """Create comprehensive flow visualization with raw data"""
     
     # Create HSV flow visualization using OpenCV
-    rgb, magnitude, max_flow = create_hsv_flow(vx, vy)
+    bgr, magnitude, max_flow = create_hsv_flow(vx, vy)
 
     # Create 2x3 subplot layout
     fig, axs = plt.subplots(2, 3, figsize=(20, 12))
@@ -66,24 +66,19 @@ def plot_flow(vx, vy, vz, conf, raw_slice, axis, slice_idx, frame_number, save_p
 
     # Generate color wheel legend with pixel by pixel size 
     legend = opticalFlow.create_flow_color_wheel(1906, 1440)
+    legend_rgb = cv2.cvtColor(legend, cv2.COLOR_BGR2RGB)
 
     # Overlay legend in bottom right corner of the flow image
-    h, w = rgb.shape[:2]
+    h, w = bgr.shape[:2]
     lh, lw = legend.shape[:2] 
     pad = 20
     pos_x = w - lw - pad
     pos_y = h - lh - pad
 
-    # For OpenCV saving (BGR format)
-    rgb_overlay_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-    rgb_overlay_bgr[pos_y:pos_y+lh, pos_x:pos_x+lw] = legend  # Legend is already BGR
-    cv2.imwrite(save_path, rgb_overlay_bgr)
-
-    # For matplotlib display (RGB format)
-    # Convert legend from BGR to RGB for matplotlib
-    legend_rgb = cv2.cvtColor(legend, cv2.COLOR_BGR2RGB)
-    rgb_overlay = rgb.copy()  # Keep original RGB for matplotlib
-    rgb_overlay[pos_y:pos_y+lh, pos_x:pos_x+lw] = legend_rgb  # Add RGB legend to RGB image
+    # Convert to RGB for matplotlib display
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    rgb_overlay = rgb.copy()  # Using the RGB version for matplotlib
+    rgb_overlay[pos_y:pos_y+lh, pos_x:pos_x+lw] = legend_rgb  # Use RGB legend
 
     # Show the overlay in the subplot
     axs[0, 1].imshow(rgb_overlay, origin='lower')
