@@ -19,7 +19,7 @@ def enhance_cell_contrast(frame):
 
 # function to compute farneback optical flow
 def compute_farneback_optical_flow(zarr_path, channel, cropID, output_dir, log_file, params):
-    
+
     parent_dir = os.path.dirname(zarr_path)
 
     # with underscore 
@@ -493,12 +493,12 @@ def main():
     else:
         print(f"Warning: 'opticalFlow' parameters not found in {params_file}, using default values.")
         params = {
-            "pyr_scale": 0.5,
+            "pyr_scale": 0.2,
             "levels": 3,
-            "winsize": 15,
-            "iterations": 3,
-            "poly_n": 5,
-            "poly_sigma": 1.2
+            "winsize": 3,
+            "iterations": 8,
+            "poly_n": 7,
+            "poly_sigma": 1.5
         }
 
     with open(log_path, 'w') as f:

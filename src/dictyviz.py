@@ -680,7 +680,7 @@ def enhance_channel_contrast(channel):
     if p_high > p_low:
         enhanced = np.clip(channel, p_low, p_high)
         enhanced = (enhanced - p_low) / (p_high - p_low)
-        enhanced = enhanced ** 1.2  # Slight gamma correction to reduce brightness
+        enhanced = enhanced ** 1.6  # Slight gamma correction to reduce brightness
         return enhanced
     return channel
 
@@ -703,39 +703,50 @@ def balance_rgb_channels(red, green, blue):
     
     return red, green, blue
 
-def resize_with_smoothing(image, target_width, target_height):
+def smooth_image(image, sigma=2.5, preserve_edges=True, passes=3):
     """
-    Resize image with smoothing to reduce pixelation artifacts.
-    Uses a two-step process for better quality.
+    Apply smoothing to improve visualization quality without resizing.
+    Uses Gaussian filtering with optional edge preservation. Iterates over passes to improve smoothing 
+    
+    Args:
+        image: Input image (grayscale or color)
+        sigma: Smoothing strength (higher = more smoothing)
+        preserve_edges: If True, uses edge-preserving filtering
+    
+    Returns:
+        Smoothed image of same dimensions as input
     """
-    # Step 1: Apply smoothing to reduce aliasing
-    if len(image.shape) == 3:  # Color image
-        smoothed = np.zeros_like(image)
-        for c in range(3):
-            smoothed[:,:,c] = gaussian_filter(image[:,:,c], sigma=1.5)
+    # Handle different image types
+    smoothed = image.copy()
+    
+    for _ in range(passes):
+        if len(smoothed.shape) == 3:  # Color image
+            if preserve_edges and cv2.__version__ >= '3.0.0':
+                smoothed = cv2.bilateralFilter(smoothed.astype(np.float32), 
+                                              d=0, 
+                                              sigmaColor=sigma*15, 
+                                              sigmaSpace=sigma)
+        else:
+            # Apply Gaussian smoothing to each channel
+            smoothed = np.zeros_like(image, dtype=np.float32)
+            for c in range(3):
+                smoothed[:,:,c] = gaussian_filter(image[:,:,c], sigma=sigma)
     else:  # Grayscale
-        smoothed = gaussian_filter(image, sigma=1.5)
+        if preserve_edges and cv2.__version__ >= '3.0.0':
+            # Edge-preserving filter for grayscale images
+            smoothed = cv2.bilateralFilter(image.astype(np.float32), 
+                                           d=0,  # Automatic diameter
+                                           sigmaColor=sigma*15, 
+                                           sigmaSpace=sigma)
+        else:
+            # Standard Gaussian smoothing
+            smoothed = gaussian_filter(image, sigma=sigma)
     
-    # Step 2: Resize in two steps for better quality
-    orig_h, orig_w = smoothed.shape[:2]
+    # Ensure output is in same format as input
+    if image.dtype == np.uint8:
+        smoothed = np.clip(smoothed, 0, 255).astype(np.uint8)
     
-    # Calculate intermediate size that preserves aspect ratio
-    aspect_ratio = orig_h / orig_w
-    if target_width / target_height > aspect_ratio:
-        interim_width = target_width
-        interim_height = int(target_width / aspect_ratio)
-    else:
-        interim_height = target_height
-        interim_width = int(target_height * aspect_ratio)
-    
-    # First resize to intermediate size
-    interp_method = cv2.INTER_AREA if (interim_width < orig_w) else cv2.INTER_CUBIC
-    interim = cv2.resize(smoothed, (interim_width, interim_height), interpolation=interp_method)
-    
-    # Final resize to target dimensions with high-quality interpolation
-    final = cv2.resize(interim, (target_width, target_height), interpolation=cv2.INTER_LANCZOS4)
-    
-    return final
+    return smoothed
 
 def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
     """
@@ -809,23 +820,23 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
             red_yz, green_yz, blue_yz = flowMaxX[i, 0], flowMaxX[i, 1], flowMaxX[i, 2]
             
             # Process XY projection (standard contrast enhancement)
-            # red_xy = enhance_channel_contrast(red_xy)
-            # green_xy = enhance_channel_contrast(green_xy)
-            # blue_xy = enhance_channel_contrast(blue_xy)
+            red_xy = enhance_channel_contrast(red_xy)
+            green_xy = enhance_channel_contrast(green_xy)
+            blue_xy = enhance_channel_contrast(blue_xy)
             
             # Process XZ projection (with z-component normalization for blue channel)
-            # red_xz = enhance_channel_contrast(red_xz)
-            # green_xz = enhance_channel_contrast(green_xz)
-            # blue_xz = normalize_vz_with_tiling(blue_xz)  # Special processing for z-flow
-            # red_xz, green_xz, blue_xz = balance_rgb_channels(red_xz, green_xz, blue_xz)
-            # blue_xz = blue_xz * 0.7  # Further reduce blue dominance
+            red_xz = enhance_channel_contrast(red_xz)
+            green_xz = enhance_channel_contrast(green_xz)
+            blue_xz = normalize_vz_with_tiling(blue_xz)  # Special processing for z-flow
+            red_xz, green_xz, blue_xz = balance_rgb_channels(red_xz, green_xz, blue_xz)
+            blue_xz = blue_xz * 0.7  # Further reduce blue dominance
             
             # Process YZ projection (with z-component normalization for blue channel)
-            # red_yz = enhance_channel_contrast(red_yz)
-            # green_yz = enhance_channel_contrast(green_yz)
-            # blue_yz = normalize_vz_with_tiling(blue_yz)  # Special processing for z-flow
-            # red_yz, green_yz, blue_yz = balance_rgb_channels(red_yz, green_yz, blue_yz)
-            # blue_yz = blue_yz * 0.7  # Further reduce blue dominance
+            red_yz = enhance_channel_contrast(red_yz)
+            green_yz = enhance_channel_contrast(green_yz)
+            blue_yz = normalize_vz_with_tiling(blue_yz)  # Special processing for z-flow
+            red_yz, green_yz, blue_yz = balance_rgb_channels(red_yz, green_yz, blue_yz)
+            blue_yz = blue_yz * 0.7  # Further reduce blue dominance
             
             # Convert to 8-bit values
             brightness = 1.0
@@ -844,9 +855,9 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
 
             # Place XY projection (bottom-left, main view)
             try:
-                #resized_xy = resize_with_smoothing(rgb_xy, xy_width, xy_height)
+                smoothed_xy = smooth_image(rgb_xy)
                 y_start = lenZ + gap
-                frame[y_start:y_start + lenY, 0:lenX] = rgb_xy
+                frame[y_start:y_start + lenY, 0:lenX] = smoothed_xy
             except Exception as e:
                 print(f"Error placing XY projection: {e}")
 
@@ -854,8 +865,8 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
             try:
                 # Flip vertically so Z increases upward
                 rgb_xz_flipped = np.flip(rgb_xz, axis=0)
-                #resized_xz = resize_with_smoothing(rgb_xz_flipped, xz_width, xz_height)
-                frame[0:lenZ, 0:lenX] = rgb_xz_flipped
+                smoothed_xz = smooth_image(rgb_xz_flipped)
+                frame[0:lenZ, 0:lenX] = smoothed_xz
             except Exception as e:
                 print(f"Error placing XZ projection: {e}")
 
@@ -863,10 +874,10 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
             try:
                 # Transpose from (Z,Y,3) to (Y,Z,3) for proper orientation
                 rgb_yz_transposed = np.transpose(rgb_yz, (1, 0, 2))
-                #resized_yz = resize_with_smoothing(rgb_yz_transposed, yz_width, yz_height)
+                smoothed_yz = smooth_image(rgb_yz_transposed)
                 y_start = lenZ + gap
                 x_start = lenX + gap
-                frame[y_start:y_start + lenY, x_start:x_start + lenZ] = rgb_yz_transposed
+                frame[y_start:y_start + lenY, x_start:x_start + lenZ] = smoothed_yz
             except Exception as e:
                 print(f"Error placing YZ projection: {e}")
 
