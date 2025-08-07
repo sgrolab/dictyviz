@@ -75,11 +75,11 @@ def compute_3D_opticalflow(zarr_path):
 
     # Adaptive spatial size: larger for bigger data
     if is_small:
-        spatial_size = 5
+        spatial_size = 2
     elif is_medium:
-        spatial_size = 7
+        spatial_size = 3
     else:  # large
-        spatial_size = 9
+        spatial_size = 4
 
     # Adaptive presmoothing: less for small data, more for noisy/large
     if is_small:
@@ -90,7 +90,7 @@ def compute_3D_opticalflow(zarr_path):
         presmoothing = 6
 
     # Filter type: gaussian for quality, box for speed with very large volumes
-    filter_type = "box" if is_large else "gaussian"
+    filter_type = "gaussian"
 
     # Log selected parameters
     print(f"Volume max dimension: {max_dim} pixels")
@@ -125,7 +125,7 @@ def compute_3D_opticalflow(zarr_path):
         print(f"Input arrays - frame1_np: {frame1_np.shape}, frame2_np: {frame2_np.shape}")
         
         # Dynamically set total_vol, sub_volume, and overlap
-
+        
         total_vol = frame1_np.shape
         sub_volume = tuple(max(1, s // 2) for s in total_vol)  # 1/2 of each dimension, at least 1
         overlap = tuple(max(1, int(sv * 0.6)) for sv in sub_volume)  # 60% of sub_volume, at least 1
