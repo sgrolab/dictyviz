@@ -29,4 +29,5 @@ conda env create -f optical3dflow_environment.yml
 conda activate optical3dflow
 ```
 ### 4. Running scripts 
-To run scripts, navigate to the right directory and run the correct bash script. Note: to run any optical flow calculations and findRegions.py, the optical3dflow environment must be activated. For everything else, the dictyviz environment should be activated. 
+To run scripts, navigate to the right directory and run the correct bash script. Note: to run anything that requires opticalflow (2d or 3d), the optical3dflow environment must be activated. For everything else, the dictyviz environment should be activated. 
+
