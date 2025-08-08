@@ -89,13 +89,15 @@ def compute_3D_opticalflow(zarr_path):
     else:  # large
         presmoothing = 6
 
+    sigma_k = 1.5  # Standard deviation for Gaussian filter, can be adjusted based on noise level
+
     # Filter type: gaussian for quality, box for speed with very large volumes
     filter_type = "gaussian"
 
     # Log selected parameters
     print(f"Volume max dimension: {max_dim} pixels")
     print(f"Size category: {'Small' if is_small else ('Medium' if is_medium else 'Large')}")
-    print(f"Parameters: iters={iters}, levels={num_levels}, scale={scale}, spatial_size={spatial_size}, presmoothing={presmoothing}, filter={filter_type}")
+    print(f"Parameters: iters={iters}, levels={num_levels}, scale={scale}, spatial_size={spatial_size}, sigma_k={sigma_k}, presmoothing={presmoothing}, filter={filter_type}")
 
     successful_frames = [] 
 
@@ -136,6 +138,7 @@ def compute_3D_opticalflow(zarr_path):
         min_dim = min(total_vol)
         filter_size = max(1, min(min_dim // 3, min(sub_volume) // 3))  
         filter_size = max(3, (filter_size // 2) * 2 + 1)  # Ensures filter_size is odd and at least 3
+        print(f"Total volume: {total_vol}, Sub-volume: {sub_volume}, Overlap: {overlap}, Filter size: {filter_size}")
 
          # Initialize the farneback object
         farneback = opticalflow3D.Farneback3D(
@@ -143,6 +146,7 @@ def compute_3D_opticalflow(zarr_path):
             num_levels = num_levels,
             scale = scale,
             spatial_size = spatial_size,
+            sigma_k = sigma_k,
             presmoothing = presmoothing,
             filter_type = filter_type,
             filter_size = filter_size,
