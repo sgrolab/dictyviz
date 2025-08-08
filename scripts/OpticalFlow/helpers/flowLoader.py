@@ -6,6 +6,23 @@ import numpy as np
 import zarr
 from scipy import ndimage
 
+def load_flow_data(results_dir):
+    """load optical flow data for all frames in the results directory"""
+    if not os.path.exists(results_dir):
+        raise FileNotFoundError(f"Results directory {results_dir} does not exist")
+    
+    flow_data = {}
+    frame_dirs = [d for d in os.listdir(results_dir) if os.path.isdir(os.path.join(results_dir, d))]
+    print(f"Found {len(frame_dirs)} frame directories in {results_dir}")
+    
+    for frame_number in frame_dirs:
+        try:
+            flow_data[frame_number] = load_flow_frame(results_dir, int(frame_number))
+        except Exception as e:
+            print(f"Error loading frame {frame_number}: {e}")
+    
+    return flow_data
+
 def load_flow_frame(results_dir, frame_number):
     """Load optical flow data for a specific frame"""
     frame_dir = os.path.join(results_dir, str(frame_number))
