@@ -227,7 +227,7 @@ def create_video_from_frames(frames_dir, output_path, fps=10):
     print(f"✓ Video created: {output_path}")
     return True
 
-def create_videos(results_dir, slice_index=None, arrow_step=10, fps=10):
+def create_videos(results_dir, slice_index=None, frame_avg=False, arrow_step=10, fps=10):
     """Process all frames and create two videos"""
     
     # Define paths
@@ -278,7 +278,11 @@ def create_videos(results_dir, slice_index=None, arrow_step=10, fps=10):
                     continue
                 
                 # Load flow data
-                flow_data = flowLoader.load_flow_frame(results_dir, frame_number)
+                if frame_avg:
+                    flow_data = flowLoader.load_average_flow_frame(results_dir, frame_number)
+                else:
+                    flow_data = flowLoader.load_flow_frame(results_dir, frame_number)
+                
                 if not flow_data:
                     print(f"Warning: No flow data for frame {frame_number}, skipping")
                     continue
@@ -320,9 +324,9 @@ def create_videos(results_dir, slice_index=None, arrow_step=10, fps=10):
         print("Frame directories found. Skipping frame generation...")
     
     # Create videos from existing frames using OpenCV
-    xy_video_path = os.path.join(results_dir, f"xy_flow_movie_slice{slice_index if slice_index is not None else 'mid'}.mp4")
-    vz_video_path = os.path.join(results_dir, f"vz_flow_movie_slice{slice_index if slice_index is not None else 'mid'}.mp4")
-    
+    xy_video_path = os.path.join(results_dir, f"xy_flow_movie_slice{slice_index if slice_index is not None else 'mid'}_{"frame_avg" if frame_avg else None}.mp4")
+    vz_video_path = os.path.join(results_dir, f"vz_flow_movie_slice{slice_index if slice_index is not None else 'mid'}_{"frame_avg" if frame_avg else None}.mp4")
+
     # Create XY flow video
     success_xy = create_video_from_frames(xy_frames_dir, xy_video_path, fps)
     
@@ -345,6 +349,7 @@ def create_videos(results_dir, slice_index=None, arrow_step=10, fps=10):
 def main():
     results_dir = sys.argv[1]
     slice_index = int(sys.argv[2])
+    frame_avg = bool(int(sys.argv[3])) if len(sys.argv) > 3 else False
     
     # Validate results directory
     if not os.path.exists(results_dir):
@@ -354,7 +359,7 @@ def main():
     print(f"Creating optical flow visualization movies from {results_dir}")
     print(f"Slice index: {slice_index if slice_index is not None else 'middle (auto)'}")
 
-    create_videos(results_dir, slice_index)
+    create_videos(results_dir, slice_index, frame_avg)
     
 if __name__ == "__main__":
     main()

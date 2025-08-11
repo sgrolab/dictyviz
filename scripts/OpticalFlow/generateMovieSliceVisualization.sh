@@ -17,4 +17,15 @@ if [ $? -ne 0 ]; then
     SLICE_INDEX=""
 fi
 
-bsub -n 8 -W 12:00 python3 movieSliceVisualization.py "$RESULTS_DIR" "$SLICE_INDEX"
+# Let user select frame averaging option
+FRAME_AVG=$(zenity --question \
+    --title="Select Frame Averaging" \
+    --text="Use frame averaged flow for smoother visualization?" \
+    --width=300)
+if [ $? -eq 0 ]; then
+    FRAME_AVG=1  # User selected "Yes"
+else
+    FRAME_AVG=0  # User selected "No"
+fi
+
+bsub -n 8 -W 12:00 python3 movieSliceVisualization.py "$RESULTS_DIR" "$SLICE_INDEX" "$FRAME_AVG"
