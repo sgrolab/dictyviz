@@ -62,8 +62,13 @@ def main(zarrFile=None, cropID=None):
             zDepthColormap = colormaps['zDepthColormap']
 
         # create dask client
+        if len(channels) == 1:
+            nTasks = 5
+        else:
+            nTasks = (5*len(channels)) + 1
+
         try:
-            client = Client(threads_per_worker=11, n_workers=1)
+            client = Client(threads_per_worker=nTasks, n_workers=1)
             print('\nDask client created at ', datetime.datetime.now(), file=f)
         except:
             print('\nDask client could not be created', file=f)
@@ -71,17 +76,20 @@ def main(zarrFile=None, cropID=None):
 
         #submit movie tasks
         try:
-            wait([client.submit(dv.makeOrthoMaxVideoClean, maxProjectionsRoot, channels[0], primaryColormap),
-                client.submit(dv.makeOrthoMaxVideoClean, maxProjectionsRoot, channels[1], primaryColormap),
-                client.submit(dv.makeOrthoMaxVideo, maxProjectionsRoot, channels[0], primaryColormap),
-                client.submit(dv.makeOrthoMaxVideo, maxProjectionsRoot, channels[1], primaryColormap),
-                client.submit(dv.makeCompOrthoMaxVideo, maxProjectionsRoot, channels),
-                client.submit(dv.makeSlicedOrthoMaxVideos, slicedMaxProjectionsRoot, channels[0], 'x', primaryColormap),
-                client.submit(dv.makeSlicedOrthoMaxVideos, slicedMaxProjectionsRoot, channels[0], 'y', primaryColormap),
-                client.submit(dv.makeSlicedOrthoMaxVideos, slicedMaxProjectionsRoot, channels[1], 'x', primaryColormap),
-                client.submit(dv.makeSlicedOrthoMaxVideos, slicedMaxProjectionsRoot, channels[1], 'y', primaryColormap),
-                client.submit(dv.makeZDepthOrthoMaxVideo, maxProjectionsRoot, channels[0], zDepthColormap),
-                client.submit(dv.makeZDepthOrthoMaxVideo, maxProjectionsRoot, channels[1], zDepthColormap)])
+            if len(channels) == 1:
+                wait([client.submit(dv.makeOrthoMaxVideoClean, maxProjectionsRoot, channels[0], primaryColormap),
+                       client.submit(dv.makeOrthoMaxVideo, maxProjectionsRoot, channels[0], primaryColormap),
+                       client.submit(dv.makeSlicedOrthoMaxVideos, slicedMaxProjectionsRoot, channels[0], 'x', primaryColormap),
+                       client.submit(dv.makeSlicedOrthoMaxVideos, slicedMaxProjectionsRoot, channels[0], 'y', primaryColormap),
+                       client.submit(dv.makeZDepthOrthoMaxVideo, maxProjectionsRoot, channels[0], zDepthColormap)])
+            else:
+                for channel in channels:
+                    wait([client.submit(dv.makeOrthoMaxVideoClean, maxProjectionsRoot, channel, primaryColormap),
+                        client.submit(dv.makeOrthoMaxVideo, maxProjectionsRoot, channel, primaryColormap),
+                        client.submit(dv.makeCompOrthoMaxVideo, maxProjectionsRoot, channels),
+                        client.submit(dv.makeSlicedOrthoMaxVideos, slicedMaxProjectionsRoot, channel, 'x', primaryColormap),
+                        client.submit(dv.makeSlicedOrthoMaxVideos, slicedMaxProjectionsRoot, channel, 'y', primaryColormap),
+                        client.submit(dv.makeZDepthOrthoMaxVideo, maxProjectionsRoot, channel, zDepthColormap)])
             print('Ortho max videos created at ', datetime.datetime.now(), file=f)   
         except Exception as e:
             print('Dask tasks could not be submitted', file=f)
