@@ -83,8 +83,10 @@ def main(zarrFile=None, cropID=None):
                 client.submit(dv.makeZDepthOrthoMaxVideo, maxProjectionsRoot, channels[0], zDepthColormap),
                 client.submit(dv.makeZDepthOrthoMaxVideo, maxProjectionsRoot, channels[1], zDepthColormap)])
             print('Ortho max videos created at ', datetime.datetime.now(), file=f)   
-        except:
+        except Exception as e:
             print('Dask tasks could not be submitted', file=f)
+            import traceback
+            traceback.print_exc()
             client.shutdown()
             sys.exit()
 
