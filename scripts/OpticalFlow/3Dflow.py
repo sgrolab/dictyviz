@@ -22,10 +22,8 @@ def compute_3D_opticalflow(zarr_path):
     if zarr_name.endswith('.zarr'):
         zarr_name = zarr_name[:-5]
     
-    zarr_name_short = zarr_name[-13:]
-    
     # Create output directory with zarr name included
-    output_dir = os.path.join(parent_dir, f"{zarr_name_short}_optical_flow_3Dresults")
+    output_dir = os.path.join(parent_dir, "optical_flow_3Dresults")
 
     # create main output directory
     os.makedirs(output_dir, exist_ok=True)
