@@ -103,6 +103,20 @@ def compute_3D_opticalflow(zarr_path):
     for i in range(num_frames - 1):
 
         print(f"\n--- Processing frame pair {i} -> {i+1} ---")
+
+        # Check if output .npy files already exist
+        frame_dir = os.path.join(output_dir, str(i))
+        output_vz_path = os.path.join(frame_dir, "optical_flow_vz.npy")
+        output_vy_path = os.path.join(frame_dir, "optical_flow_vy.npy")
+        output_vx_path = os.path.join(frame_dir, "optical_flow_vx.npy")
+        output_confidence_path = os.path.join(frame_dir, "optical_flow_confidence.npy")
+        if os.path.exists(output_vz_path) and os.path.exists(output_vy_path) and os.path.exists(output_vx_path) and os.path.exists(output_confidence_path):
+            print(f"Output files for frame pair {i}->{i+1} already exist. Skipping...")
+            successful_frames.append(i)
+            continue
+        
+        # Create output directory for this frame pair
+        os.makedirs(frame_dir, exist_ok=True)
         
         # Monitor GPU memory
         if torch.cuda.is_available():
@@ -163,22 +177,18 @@ def compute_3D_opticalflow(zarr_path):
             print(f"Output tensors - vz: {output_vz.shape}, vy: {output_vy.shape}, vx: {output_vx.shape}, conf: {output_confidence.shape}")
             print(f"Output types - vz: {type(output_vz)}, vy: {type(output_vy)}, vx: {type(output_vx)}, conf: {type(output_confidence)}")
             
-            # Create folder for this time point
-            frame_dir = os.path.join(output_dir, str(i))
-            os.makedirs(frame_dir, exist_ok=True)
-            
             # Save individual frame results directly
             if isinstance(output_vz, torch.Tensor):
-                np.save(os.path.join(frame_dir, "optical_flow_vz.npy"), output_vz.detach().cpu().numpy())
-                np.save(os.path.join(frame_dir, "optical_flow_vy.npy"), output_vy.detach().cpu().numpy())
-                np.save(os.path.join(frame_dir, "optical_flow_vx.npy"), output_vx.detach().cpu().numpy())
-                np.save(os.path.join(frame_dir, "optical_flow_confidence.npy"), output_confidence.detach().cpu().numpy())
+                np.save(output_vz_path, output_vz.detach().cpu().numpy())
+                np.save(output_vy_path, output_vy.detach().cpu().numpy())
+                np.save(output_vx_path, output_vx.detach().cpu().numpy())
+                np.save(output_confidence_path, output_confidence.detach().cpu().numpy())
             else:
-                np.save(os.path.join(frame_dir, "optical_flow_vz.npy"), np.asarray(output_vz))
-                np.save(os.path.join(frame_dir, "optical_flow_vy.npy"), np.asarray(output_vy))
-                np.save(os.path.join(frame_dir, "optical_flow_vx.npy"), np.asarray(output_vx))
-                np.save(os.path.join(frame_dir, "optical_flow_confidence.npy"), np.asarray(output_confidence))
-            
+                np.save(output_vz_path, np.asarray(output_vz))
+                np.save(output_vy_path, np.asarray(output_vy))
+                np.save(output_vx_path, np.asarray(output_vx))
+                np.save(output_confidence_path, np.asarray(output_confidence))
+
             successful_frames.append(i)
             print(f"Frame {i}->{i+1} completed. Saved to: {frame_dir}")
             
