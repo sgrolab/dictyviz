@@ -20,7 +20,7 @@ if ! [[ "$START_FRAME" =~ ^[0-9]+$ ]] || ! [[ "$END_FRAME" =~ ^[0-9]+$ ]] || [ "
 fi
 
 #Submit the cell shadow removal job to the cluster
-#bsub -K -J "remove_cell_shadows" -n 8 -W 08:00 python3 removeCellShadows.py "$RESULTS_DIR" "$START_FRAME" "$END_FRAME"
+bsub -K -J "remove_cell_shadows" -n 8 -gpu "num=1" -q gpu_a100 -W 08:00 python3 removeCellShadows.py "$RESULTS_DIR" "$START_FRAME" "$END_FRAME"
 
 # Submit the tracking job to the cluster
 bsub -J "segment_track_rocks" -n 8 -W 08:00 python3 segmentTrackRocks.py "$RESULTS_DIR" "$START_FRAME" "$END_FRAME"
