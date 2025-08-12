@@ -91,7 +91,7 @@ def __main__():
     zarrPath = sys.argv[1]
     print(f"Loading Zarr dataset from {zarrPath}...")
     parentDir = os.path.dirname(zarrPath) + "/"
-    outputDir = parentDir + "segmentation_gpu/"
+    outputDir = parentDir + "segmentation/"
     if not os.path.exists(outputDir):
         os.makedirs(outputDir)
 
@@ -102,9 +102,8 @@ def __main__():
     cells = 0
     rocks = 1
 
-    #TODO: come up with an automated way to determine the zRange
-    # Set short t range for testing
-    tRange = range(0, resArray.shape[0])  # Process all time points
+    # Set time range from command line arguments
+    tRange = range(int(sys.argv[2]), int(sys.argv[3]))
 
     # could be recalculated for each time point, but for now we use the first time point
     threshold = np.percentile(resArray[0, cells, 5, :, :], THRESHOLD)
