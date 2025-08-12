@@ -116,6 +116,8 @@ def __main__():
             print("Applying Gaussian filter and Otsu's thresholding to the rocks image...")
             # Invert rock channel
             rocksImgFiltered = 65535 - rocksImgFiltered
+            # return 0 values to 0
+            rocksImgFiltered[rocksImgFiltered == 65535] = 0
 
             # Apply Gaussian filter to the rocks image
             rocksGaussianFiltered = applyGaussianFilter(rocksImgFiltered)
@@ -149,8 +151,8 @@ def __main__():
         allLabels.append(labels)
 
     tracksPath = outputDir + "rock_tracks.csv"
-    graphPath = outputDir + "rock_tracking_graph.graphml"
-    if not os.path.exists(tracksPath) or not os.path.exists(graphPath):
+    graphPath = outputDir + "rock_tracking.graphml"
+    if not os.path.exists(tracksPath):
         # Calculate centroids for each label in each frame
         print("Calculating centroids for each label in each frame...")
         regionProps = []
@@ -173,15 +175,19 @@ def __main__():
 
         # Save the tracking results
         trackDf.to_csv(tracksPath, index=False)
-        nx.write_graphml(graph, graphPath)
+        if len(graph)!=0:
+            print(len(graph))
+            nx.write_graphml(graph, graphPath)
         print(f"Tracking results saved to {tracksPath} and {graphPath}")
     else:
-        print(f"Tracking results already exist at {tracksPath} and {graphPath}. Skipping tracking.")
+        print(f"Tracking results already exist at {tracksPath}. Skipping tracking.")
         trackDf = pd.read_csv(tracksPath)
-        graph = nx.read_graphml(graphPath)
+        if os.path.exists(graphPath):
+            print(f"Loading tracking graph from {graphPath}...")
+            graph = nx.read_graphml(graphPath)
 
     # Link labels across frames
-    trackedLabelsPath = tpOutputDir + "tracked_labels.tiff"
+    trackedLabelsPath = outputDir + "tracked_labels.tiff"
     if not os.path.exists(trackedLabelsPath):
         print("Using tracks to link labels across frames...")
         trackedLabels = np.zeros_like(allLabels)
@@ -190,6 +196,7 @@ def __main__():
             frame = int(row["frame"])
             inds = allLabels[frame] == row["label"]
             trackedLabels[frame][inds] = int(row["tree_id"]) + 1
+        tiff.imwrite(trackedLabelsPath, trackedLabels.astype("uint16"))
     else:
         print(f"Tracked labels already exist at {trackedLabelsPath}. Skipping linking.")
         trackedLabels = tiff.imread(trackedLabelsPath)
