@@ -324,9 +324,21 @@ def create_videos(results_dir, slice_index=None, frame_avg=False, arrow_step=10,
         print("Frame directories found. Skipping frame generation...")
     
     # Create videos from existing frames using OpenCV
-    xy_video_path = os.path.join(results_dir, f"xy_flow_movie_slice{slice_index if slice_index is not None else 'mid'}_{"frame_avg" if frame_avg else None}.mp4")
-    vz_video_path = os.path.join(results_dir, f"vz_flow_movie_slice{slice_index if slice_index is not None else 'mid'}_{"frame_avg" if frame_avg else None}.mp4")
-
+    if slice_index is not None:
+        if frame_avg:
+            xy_video_path = os.path.join(results_dir, f"xy_flow_movie_slice{slice_index}_frame_avg.mp4")
+            vz_video_path = os.path.join(results_dir, f"vz_flow_movie_slice{slice_index}_frame_avg.mp4")
+        else:
+            xy_video_path = os.path.join(results_dir, f"xy_flow_movie_slice{slice_index}.mp4")
+            vz_video_path = os.path.join(results_dir, f"vz_flow_movie_slice{slice_index}.mp4")
+    else:
+        if frame_avg:
+            xy_video_path = os.path.join(results_dir, "xy_flow_movie_frame_avg.mp4")
+            vz_video_path = os.path.join(results_dir, "vz_flow_movie_frame_avg.mp4")
+        else:
+            xy_video_path = os.path.join(results_dir, "xy_flow_movie.mp4")
+            vz_video_path = os.path.join(results_dir, "vz_flow_movie.mp4")
+            
     # Create XY flow video
     success_xy = create_video_from_frames(xy_frames_dir, xy_video_path, fps)
     
