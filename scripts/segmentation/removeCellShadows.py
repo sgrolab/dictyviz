@@ -147,10 +147,12 @@ def __main__():
 
                         finalImg[zSlice, :, :] = rocksImgFiltered
                         maskedCells.append(cellsImgMasked)
+                    rocksImgFiltered = finalImg
+                    maskedCells = np.array(maskedCells)
             else:
+                finalImg = np.zeros((resArray.shape[2], resArray.shape[3], resArray.shape[4]), dtype=np.uint16)  # Initialize the array for filtered rocks image
+                maskedCells = []
                 for zSlice in tqdm(range(resArray.shape[2]), desc="Removing cell shadows"):
-                    finalImg = np.zeros((resArray.shape[2],resArray.shape[3], resArray.shape[4]), dtype=np.uint16)  # Initialize the array for filtered rocks image
-                    maskedCells = []
 
                     rocksImg = resArray[t, rocks, zSlice, :, :]
                     cellsImg = resArray[t, cells, zSlice, :, :]
