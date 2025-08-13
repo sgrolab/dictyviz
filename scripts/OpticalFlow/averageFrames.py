@@ -34,7 +34,7 @@ def main():
             np.save(os.path.join(output_dir, f"avg_flow_frame_{nb_frames//2}.npy"), avg_flow)
 
             for first_frame_index in range(len(frame_dirs)-nb_frames):
-                flowLoader.load_next_frame(flow_data, results_dir, first_frame_index + nb_frames, log_file=log)
+                flow_data = flowLoader.load_next_frame(flow_data, results_dir, first_frame_index + nb_frames, log_file=log)
                 avg_flow = np.mean(flow_data, axis=1)  # average flow across slices
 
                 # save the average flow for this frame
