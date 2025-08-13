@@ -7,7 +7,6 @@ import zarr
 from scipy import ndimage
 from tqdm import tqdm
 
-
 def load_flow_frame(results_dir, frame_number):
     """Load optical flow data for a specific frame"""
     frame_dir = os.path.join(results_dir, str(frame_number))
@@ -26,6 +25,18 @@ def load_flow_frame(results_dir, frame_number):
     
     return flow_data
 
+def load_Z_flow_frame(results_dir, frame_number):
+    """Load the Z component of optical flow data for a specific frame"""
+    frame_dir = os.path.join(results_dir, str(frame_number))
+    if not os.path.exists(frame_dir):
+        raise FileNotFoundError(f"Frame directory {frame_dir} does not exist")
+    flow_data_Z_path = os.path.join(frame_dir, f"optical_flow_vz.npy")
+    if os.path.exists(flow_data_Z_path):
+        return np.load(flow_data_Z_path)
+    else:
+        print(f"Warning: Z flow data missing at {flow_data_Z_path}")
+        return None
+    
 def load_average_flow_frame(results_dir, frame_number):
     """Load the frame averaged flow data for a specific frame"""
     frame_dir = os.path.join(results_dir, str(frame_number))
@@ -45,13 +56,12 @@ def load_average_flow_frame(results_dir, frame_number):
     }
     return flow_data
 
-def load_raw_data(results_dir, frame_number):
+def load_raw_data(parent_dir, frame_number, cells_channel, log_file=None):
     """Load raw image data for comparison"""
 
     # Try to find zarr file in parent directory
-    parent_dir = os.path.dirname(results_dir)
     zarr_files = [f for f in os.listdir(parent_dir) if f.endswith('.zarr')]
-    
+
     if not zarr_files:
         print("Warning: No zarr file found for raw data")
         return None
@@ -62,11 +72,17 @@ def load_raw_data(results_dir, frame_number):
         res_array = zarr_folder['0']['0']
         
         if frame_number < res_array.shape[0]:
-            print(f"Loading raw data: frame {frame_number} from {zarr_path}")
-            raw_frame = np.asarray(res_array[frame_number, 0, :, :, :])
+            if log_file:
+                log_file.write(f"Loading raw data: frame {frame_number} from {zarr_path}\n")
+            else:
+                print(f"Loading raw data: frame {frame_number} from {zarr_path}")
+            raw_frame = np.asarray(res_array[frame_number, cells_channel, :, :, :])
             return raw_frame
         else:
-            print(f"Warning: Frame {frame_number} out of bounds in raw data (max index = {res_array.shape[0]-1})")
+            if log_file:
+                log_file.write(f"Warning: Frame {frame_number} out of bounds in raw data (max index = {res_array.shape[0]-1})\n")
+            else:
+                print(f"Warning: Frame {frame_number} out of bounds in raw data (max index = {res_array.shape[0]-1})")
     except Exception as e:
         print(f"Warning: Could not load raw data: {e}")
     
@@ -115,7 +131,7 @@ def load_first_frames(results_dir, nb_frames, log_file=None):
 
     flow_frame_0 = load_flow_frame(results_dir, 0)
     lenZ, lenY, lenX = flow_frame_0['vx'].shape
-    flow_data = np.zeros((3, 5, lenZ, lenY, lenX), dtype=np.float32)  # initialize flow data array
+    flow_data = np.zeros((3, nb_frames, lenZ, lenY, lenX), dtype=np.float32)  # initialize flow data array
 
     for frame in range(nb_frames):
         if log_file:
@@ -150,7 +166,12 @@ def load_next_frame(flow_data, results_dir, frame_index, log_file=None):
         print(f"Loading next flow frame for index {frame_index}...")
 
     # drop the first frame and add the next frame
-    flow_data = flow_data[:, 1:]
+    next_frame_flow_data = np.zeros_like(flow_data)
+
+    print(f"Shape of flow_data after dropping first frame: {flow_data[:, 1].shape}")
+    print(f"Shape of next_frame_flow_data to broadcast into: {next_frame_flow_data[:, :-1].shape}")
+
+    next_frame_flow_data[:, :-1] = flow_data[:, 1:]
 
     next_frame = load_flow_frame(results_dir, frame_index)
 
@@ -158,6 +179,9 @@ def load_next_frame(flow_data, results_dir, frame_index, log_file=None):
     flow_frame_vy = next_frame['vy']
     flow_frame_vz = next_frame['vz']
 
-    flow_data[0, -1] = flow_frame_vx
-    flow_data[1, -1] = flow_frame_vy
-    flow_data[2, -1] = flow_frame_vz
+    # Tack the new frame data onto the end of the next_frame_flow_data array
+    next_frame_flow_data[0, -1] = flow_frame_vx
+    next_frame_flow_data[1, -1] = flow_frame_vy
+    next_frame_flow_data[2, -1] = flow_frame_vz
+
+    return next_frame_flow_data
