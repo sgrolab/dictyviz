@@ -6,22 +6,33 @@ from OpticalFlow.helpers import flowLoader
 
 def main():
     results_dir = sys.argv[1]
+    frame_avg = bool(int(sys.argv[2])) if len(sys.argv) > 2 else False
 
     # Get all frame directories (numeric names)
-    frame_list = sorted([d for d in os.listdir(results_dir) if d.isdigit()])
-    if not frame_list:
+    frame_dirs = [d for d in os.listdir(results_dir) if os.path.isdir(os.path.join(results_dir, d))]
+    if frame_avg:
+        # find frame directories that contain a avg_flow_frame_*.npy file
+        frame_dirs = [d for d in frame_dirs if any(f.startswith('avg_flow_frame_') for f in os.listdir(os.path.join(results_dir, d)))]
+    # remove non-numeric directories
+    frame_dirs = [d for d in frame_dirs if d.isdigit()]
+    print(f"Found {len(frame_dirs)} frames in directory: {results_dir}")
+    if not frame_dirs:
         print(f"No frame directories found in: {results_dir}")
         sys.exit(1)
 
     all_regions = []
 
-    for frame_str in frame_list:
+    for frame_str in frame_dirs:
         frame_number = int(frame_str)
         frame_dir = os.path.join(results_dir, frame_str)
         print(f"\nAnalyzing frame {frame_number}...")
 
         # Load 3D flow data from directory
-        flow_data = flowLoader.load_flow_frame(results_dir, frame_number)
+        if frame_avg:
+            flow_data = flowLoader.load_average_flow_frame(results_dir, frame_number)
+        else:
+            flow_data = flowLoader.load_flow_frame(results_dir, frame_number)
+
         vx_3d = flow_data['vx']
         vy_3d = flow_data['vy']   
         vz_3d = flow_data.get('vz')
