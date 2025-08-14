@@ -101,6 +101,9 @@ def __main__():
 
     for t in tRange:
 
+        # TODO: Reorder logic so that it checks for the final output first and works backwards
+        # This way it can skip loading earlier steps if processing is already complete
+
         tpOutputDir = outputDir + f"t{t}/"
         rocksImgPath = tpOutputDir + "cell_shadows_removed_" + str(THRESHOLD) + "thresh_" + str(SHADOW_MED_FILT) + "medfilt.tif"
         if not os.path.exists(rocksImgPath):
@@ -128,6 +131,10 @@ def __main__():
             #Save the Otsu thresholded image
             tiff.imwrite(rocksOtsuPath, rocksOtsuThreshold.astype("uint16"))
             print(f"Otsu thresholded rocks image saved to {rocksOtsuPath}")
+
+            # Clear memory
+            del rocksGaussianFiltered
+            del rocksImgFiltered
         else:
             print(f"Otsu thresholded rocks image already exists. Skipping processing for time point {t}.")
             rocksOtsuThreshold = tiff.imread(rocksOtsuPath)
@@ -144,9 +151,11 @@ def __main__():
             # Save the segmented rocks image
             tiff.imwrite(segmentedRocksPath, labels.astype("uint16"))
             print(f"Segmented rocks image saved to {segmentedRocksPath}")
+            del rocksOtsuThreshold
         else:
             print(f"Segmented rocks image already exists. Skipping processing for time point {t}.")
             labels = tiff.imread(segmentedRocksPath)
+            del rocksOtsuThreshold
 
         allLabels.append(labels)
 
