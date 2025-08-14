@@ -167,6 +167,9 @@ def __main__():
             tiff.imwrite(rocksImgPath, rocksImgFiltered.astype("uint16"))
             #tiff.imwrite(cellsImgPath, maskedCells.astype("uint16"))
             print(f"Cell shadows removed and saved to {tpOutputDir}")
+            # clear memory
+            del rocksImgFiltered
+            del maskedCells
 
 if __name__ == "__main__":
     __main__()
