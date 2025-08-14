@@ -3,6 +3,9 @@ import sys
 import json
 import torch
 import numpy as np
+import matplotlib
+# Set backend before importing pyplot to avoid display issues
+matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -39,6 +42,9 @@ def main():
         # find frame directories that contain a avg_flow_frame_*.npy file
         frame_dirs = [d for d in frame_dirs if any(f.startswith('avg_flow_frame_') for f in os.listdir(os.path.join(results_dir, d)))]
 
+    # remove non-numeric directories
+    frame_dirs = [d for d in frame_dirs if d.isdigit()]
+
     print(f"Found {len(frame_dirs)} frames in directory: {results_dir}")
 
     # Find the channel index for cells
@@ -53,16 +59,17 @@ def main():
         log.write(f"Number of frames: {len(frame_dirs)}\n")
 
         # Generate upward flow in Z for each frame
-        upward_flow_over_time = np.zeros(len(frame_dirs))
+        upward_flow_over_time = np.zeros((len(frame_dirs), 2), dtype=np.float32)
 
-        for frame_dir in tqdm(frame_dirs):
+        for i, frame_dir in tqdm(enumerate(frame_dirs)):
+
             # determine frame index from directory name
             frame_index = int(frame_dir)
             log.write(f"Processing frame: {frame_index}\n")
 
             # load flow data for the current frame
             if frame_avg:
-                flow_data = flowLoader.load_avg_flow_frame(results_dir, frame_index)
+                flow_data = flowLoader.load_average_flow_frame(results_dir, frame_index)
                 flow_data_Z = flow_data.get('vz', None)
                 if flow_data_Z is None:
                     log.write(f"Warning: Flow data in Z for frame {frame_index} is None.\n")
@@ -103,25 +110,35 @@ def main():
                 raw_signal = np.sum(raw_frame)
             
             norm_upward_flow_z = upward_flow_z / raw_signal if raw_signal > 0 else 0
-
-            upward_flow_over_time[frame_index] = norm_upward_flow_z
+            upward_flow_over_time[i, 0] = frame_index
+            upward_flow_over_time[i, 1] = norm_upward_flow_z
+        
+        # Sort the upward flow over time by frame index
+        upward_flow_over_time = upward_flow_over_time[upward_flow_over_time[:, 0].argsort()]
 
         # Save the upward flow over time to a file
-        output_file = os.path.join(results_dir, 'upward_Z_flow_over_time.csv')
+        if frame_avg:
+            output_file = os.path.join(results_dir, 'upward_Z_flow_over_time_frame_avg.csv')
+        else:
+            output_file = os.path.join(results_dir, 'upward_Z_flow_over_time.csv')
         np.savetxt(output_file, upward_flow_over_time, delimiter=',')
 
         log.write(f"Upward flow over time saved to: {output_file}\n")
 
         # Plot the results
         plt.figure(figsize=(10, 5))
-        plt.plot(upward_flow_over_time, marker='o', linestyle='-', color='b')
+        plt.plot(upward_flow_over_time[:,0], upward_flow_over_time[:,1], marker='o', linestyle='-', color='b')
         plt.title('Upward Flow in Z Over Time')
         plt.xlabel('Frame Index')
         plt.ylabel('Normalized Upward Flow (Z)')
-        plt.savefig(os.path.join(results_dir, 'upward_Z_flow_over_time.png'))
-        plt.show()
-
-        log.write("Plot saved as upward_Z_flow_over_time.png\n")
+        if frame_avg:
+            plt.title('Upward Flow in Z Over Time (Frame Averaged)')
+            plt.savefig(os.path.join(results_dir, 'upward_Z_flow_over_time_frame_avg.png'))
+            log.write("Plot saved as upward_Z_flow_over_time.png\n")
+        else:
+            plt.title('Upward Flow in Z Over Time')
+            plt.savefig(os.path.join(results_dir, 'upward_Z_flow_over_time.png'))
+            log.write("Plot saved as upward_Z_flow_over_time.png\n")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
