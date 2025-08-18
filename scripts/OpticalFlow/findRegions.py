@@ -1,5 +1,8 @@
 import os
 import sys 
+import cv2
+import cmapy
+import numpy as np
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from OpticalFlow.helpers import analyzeRegions
 from OpticalFlow.helpers import flowLoader
@@ -7,6 +10,7 @@ from OpticalFlow.helpers import flowLoader
 def main():
     results_dir = sys.argv[1]
     frame_avg = bool(int(sys.argv[2])) if len(sys.argv) > 2 else False
+    z_slice = int(sys.argv[3]) if len(sys.argv) > 3 else 10
 
     # Get all frame directories (numeric names)
     frame_dirs = [d for d in os.listdir(results_dir) if os.path.isdir(os.path.join(results_dir, d))]
@@ -21,6 +25,7 @@ def main():
         sys.exit(1)
 
     all_regions = []
+    all_score_maps = []
 
     for frame_str in frame_dirs:
         frame_number = int(frame_str)
@@ -41,7 +46,7 @@ def main():
         magnitude_map, variance_map = analyzeRegions.calculate_mag_var(vx_3d, vy_3d, vz_3d, window_size=40)
 
         # Find optimal flow regions for this frame
-        optimal_regions = analyzeRegions.find_optimal_regions(magnitude_map, variance_map, top_k=3)
+        optimal_regions, score_map = analyzeRegions.find_optimal_regions(magnitude_map, variance_map, top_k=3)
 
         # Save results for this frame
         analyzeRegions.save_analysis_results(
@@ -51,6 +56,12 @@ def main():
         # Add frame number to each region and collect
         for region in optimal_regions:
             all_regions.append((frame_number,) + region)
+
+        all_score_maps.append(score_map)
+
+        # Save score map for this frame
+        score_map_file = os.path.join(frame_dir, f"flow_score_map_frame_{frame_number}.npy")
+        np.save(score_map_file, score_map)
 
     # Find top 3 regions across all frames by score
     all_regions_sorted = sorted(all_regions, key=lambda x: x[-1], reverse=True)
@@ -68,6 +79,23 @@ def main():
                     f"Norm_Mag: {norm_mag:.4f}, Norm_Var: {norm_var:.4f}, "
                     f"Score: {score:.4f}\n")
     print(f"\n✓ Top 3 flow regions across all frames saved to: {summary_file}")
+
+    # Generate movie of score maps for each frame at a single z slice
+    movie_filename = os.path.join(results_dir, f"flow_score_movie_{z_slice}.mp4")
+    width = all_score_maps[0].shape[2]
+    height = all_score_maps[0].shape[1]
+    vid = cv2.VideoWriter(movie_filename, cv2.VideoWriter_fourcc(*'MJPG'), 10, (width, height))
+
+    for frame_idx, score_map in enumerate(all_score_maps):
+        score_map_frame = score_map[frame_idx][z_slice]
+        #convert to 8-bit grayscale
+        score_map_frame = cv2.normalize(score_map_frame, None, 0, 255, cv2.NORM_MINMAX)
+        score_map_frame = cv2.applyColorMap(score_map_frame.astype('uint8'), cmapy.cmap('viridis'))
+
+        vid.write(score_map_frame)
+
+    vid.release()
+    print(f"✓ Flow score movie saved to: {movie_filename}")
 
 if __name__ == "__main__":
     main()
