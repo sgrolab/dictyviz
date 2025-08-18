@@ -19,6 +19,7 @@ def main():
         frame_dirs = [d for d in frame_dirs if any(f.startswith('avg_flow_frame_') for f in os.listdir(os.path.join(results_dir, d)))]
     # remove non-numeric directories
     frame_dirs = [d for d in frame_dirs if d.isdigit()]
+    frame_dirs.sort(key=int)  # Sort numerically by frame number
     print(f"Found {len(frame_dirs)} frames in directory: {results_dir}")
     if not frame_dirs:
         print(f"No frame directories found in: {results_dir}")
@@ -90,7 +91,7 @@ def main():
     height = score_map.shape[1]
 
     movie_filename = os.path.join(results_dir, f"flow_score_movie_{z_slice}.mp4")
-    vid = cv2.VideoWriter(movie_filename, cv2.VideoWriter_fourcc(*'MJPG'), 10, (width, height))
+    vid = cv2.VideoWriter(movie_filename, cv2.VideoWriter_fourcc(*'mp4v'), 10, (width, height))
 
     for frame_str in frame_dirs:
         frame_number = int(frame_str)
