@@ -12,6 +12,13 @@ import zarr
 import torch
 import logging
 
+def cutoff_at_threshold(frame, threshold):
+    """
+    Set all values in the frame to zero if they are below the threshold.
+    """
+    frame[frame < threshold] = 0
+    return frame
+
 def compute_3D_opticalflow(zarr_path):
 
     parent_dir = os.path.dirname(zarr_path)
@@ -90,7 +97,7 @@ def compute_3D_opticalflow(zarr_path):
     sigma_k = 1.5  # Standard deviation for Gaussian filter, can be adjusted based on noise level
 
     # Filter type: gaussian for quality, box for speed with very large volumes
-    filter_type = "gaussian"
+    filter_type = "box" if is_large else "gaussian"
 
     # Log selected parameters
     print(f"Volume max dimension: {max_dim} pixels")
@@ -99,8 +106,17 @@ def compute_3D_opticalflow(zarr_path):
 
     successful_frames = [] 
 
+    current_frame = resArray[0, 0, :, :, :]  # Get the first frame to determine dimensions
+    
+    # Cutoff at a threshold to remove noise
+    threshold = 3000 # Hard coded for now
+    current_frame = cutoff_at_threshold(current_frame, threshold)
+
+    current_frame_np = np.asarray(current_frame, dtype=np.float32)
+
     # Loop through consecutive frame pairs
-    for i in range(num_frames - 1):
+    #for i in range(num_frames - 1):
+    for i in range(111, 125):  # Example range for testing
 
         print(f"\n--- Processing frame pair {i} -> {i+1} ---")
 
@@ -128,19 +144,19 @@ def compute_3D_opticalflow(zarr_path):
         else:
             logging.info("GPU is not available")
 
-        # get consecutive frames
-        frame1 = resArray[i, 0, :, :, :]
-        frame2 = resArray[i+1, 0, :, :, :]
+        # get next frame
+        next_frame = resArray[i+1, 0, :, :, :]
+
+        next_frame = cutoff_at_threshold(next_frame, threshold)
 
         # Convert to float32 NumPy arrays first (the library expects NumPy, not PyTorch tensors)
-        frame1_np = np.asarray(frame1, dtype=np.float32)
-        frame2_np = np.asarray(frame2, dtype=np.float32)
-        
-        print(f"Input arrays - frame1_np: {frame1_np.shape}, frame2_np: {frame2_np.shape}")
+        next_frame_np = np.asarray(next_frame, dtype=np.float32)
+
+        print(f"Input arrays - current_frame_np: {current_frame_np.shape}, next_frame_np: {next_frame_np.shape}")
         
         # Dynamically set total_vol, sub_volume, and overlap
-        
-        total_vol = frame1_np.shape
+
+        total_vol = current_frame_np.shape
         sub_volume = tuple(max(1, s // 2) for s in total_vol)  # 1/2 of each dimension, at least 1
         overlap = tuple(max(1, int(sv * 0.6)) for sv in sub_volume)  # 60% of sub_volume, at least 1
     
@@ -167,7 +183,7 @@ def compute_3D_opticalflow(zarr_path):
         try:
             # Calculate optical flow between consecutive frames
             output_vz, output_vy, output_vx, output_confidence = farneback.calculate_flow(
-                frame1_np, frame2_np, 
+                current_frame_np, next_frame_np, 
                 start_point=(0, 0, 0),
                 total_vol=total_vol,
                 sub_volume=sub_volume,
@@ -191,6 +207,8 @@ def compute_3D_opticalflow(zarr_path):
 
             successful_frames.append(i)
             print(f"Frame {i}->{i+1} completed. Saved to: {frame_dir}")
+
+            current_frame_np = next_frame_np  # Update current frame for next iteration
             
             # Force GPU memory cleanup after each frame
             if torch.cuda.is_available():
