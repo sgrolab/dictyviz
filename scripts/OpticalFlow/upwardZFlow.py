@@ -60,6 +60,7 @@ def main():
 
         # Generate upward flow in Z for each frame
         upward_flow_over_time = np.zeros((len(frame_dirs), 2), dtype=np.float32)
+        downward_flow_over_time = np.zeros((len(frame_dirs), 2), dtype=np.float32)
 
         for i, frame_dir in tqdm(enumerate(frame_dirs)):
 
@@ -97,6 +98,7 @@ def main():
 
                 # Calculate the total upward flow in Z and normalize it against raw signal
                 upward_flow_z = torch.sum(flow_data_Z > 0)
+                downward_flow_z = torch.sum(flow_data_Z < 0)
                 raw_signal = torch.sum(raw_frame)
 
                 # Clear CUDA memory
@@ -106,24 +108,33 @@ def main():
                 
             else:
                 print("CUDA is not available. Using CPU.")
-                flow_data_Z = np.sum(flow_data_Z > 0)
+                upward_flow_z = np.sum(flow_data_Z > 0)
+                downward_flow_z = np.sum(flow_data_Z < 0)
                 raw_signal = np.sum(raw_frame)
             
             norm_upward_flow_z = upward_flow_z / raw_signal if raw_signal > 0 else 0
+            norm_downward_flow_z = abs(downward_flow_z / raw_signal) if raw_signal > 0 else 0
             upward_flow_over_time[i, 0] = frame_index
             upward_flow_over_time[i, 1] = norm_upward_flow_z
+            downward_flow_over_time[i, 0] = frame_index
+            downward_flow_over_time[i, 1] = norm_downward_flow_z
         
         # Sort the upward flow over time by frame index
         upward_flow_over_time = upward_flow_over_time[upward_flow_over_time[:, 0].argsort()]
+        downward_flow_over_time = downward_flow_over_time[downward_flow_over_time[:, 0].argsort()]
 
         # Save the upward flow over time to a file
         if frame_avg:
-            output_file = os.path.join(results_dir, 'upward_Z_flow_over_time_frame_avg.csv')
+            upward_flow_output_file = os.path.join(results_dir, 'upward_Z_flow_over_time_frame_avg.csv')
+            downward_flow_output_file = os.path.join(results_dir, 'downward_Z_flow_over_time_frame_avg.csv')
         else:
-            output_file = os.path.join(results_dir, 'upward_Z_flow_over_time.csv')
-        np.savetxt(output_file, upward_flow_over_time, delimiter=',')
+            upward_flow_output_file = os.path.join(results_dir, 'upward_Z_flow_over_time.csv')
+            downward_flow_output_file = os.path.join(results_dir, 'downward_Z_flow_over_time.csv')
+        np.savetxt(upward_flow_output_file, upward_flow_over_time, delimiter=',')
+        np.savetxt(downward_flow_output_file, downward_flow_over_time, delimiter=',')
 
-        log.write(f"Upward flow over time saved to: {output_file}\n")
+        log.write(f"Upward flow over time saved to: {upward_flow_output_file}\n")
+        log.write(f"Downward flow over time saved to: {downward_flow_output_file}\n")
 
         # Plot the results
         plt.figure(figsize=(10, 5))
@@ -134,11 +145,25 @@ def main():
         if frame_avg:
             plt.title('Upward Flow in Z Over Time (Frame Averaged)')
             plt.savefig(os.path.join(results_dir, 'upward_Z_flow_over_time_frame_avg.png'))
-            log.write("Plot saved as upward_Z_flow_over_time.png\n")
+            log.write("Plot saved as upward_Z_flow_over_time_frame_avg.png\n")
         else:
             plt.title('Upward Flow in Z Over Time')
             plt.savefig(os.path.join(results_dir, 'upward_Z_flow_over_time.png'))
             log.write("Plot saved as upward_Z_flow_over_time.png\n")
+
+        plt.figure(figsize=(10, 5))
+        plt.plot(downward_flow_over_time[:,0], downward_flow_over_time[:,1], marker='o', linestyle='-', color='r')
+        plt.title('Downward Flow in Z Over Time')
+        plt.xlabel('Frame Index')
+        plt.ylabel('Normalized Downward Flow (Z)')
+        if frame_avg:
+            plt.title('Downward Flow in Z Over Time (Frame Averaged)')
+            plt.savefig(os.path.join(results_dir, 'downward_Z_flow_over_time_frame_avg.png'))
+            log.write("Plot saved as downward_Z_flow_over_time_frame_avg.png\n")
+        else:
+            plt.title('Downward Flow in Z Over Time')
+            plt.savefig(os.path.join(results_dir, 'downward_Z_flow_over_time.png'))
+            log.write("Plot saved as downward_Z_flow_over_time.png\n")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
