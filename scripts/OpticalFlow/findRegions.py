@@ -31,6 +31,12 @@ def main():
         frame_dir = os.path.join(results_dir, frame_str)
         print(f"\nAnalyzing frame {frame_number}...")
 
+        # Check if score map already exists
+        score_map_file = os.path.join(frame_dir, f"flow_score_map_frame_{frame_number}.npy")
+        if os.path.exists(score_map_file):
+            print(f"Score map already exists for frame {frame_number}. Skipping analysis.")
+            continue
+
         # Load 3D flow data from directory
         if frame_avg:
             flow_data = flowLoader.load_average_flow_frame(results_dir, frame_number)
@@ -57,7 +63,6 @@ def main():
             all_regions.append((frame_number,) + region)
 
         # Save score map for this frame
-        score_map_file = os.path.join(frame_dir, f"flow_score_map_frame_{frame_number}.npy")
         np.save(score_map_file, score_map)
 
         del score_map
