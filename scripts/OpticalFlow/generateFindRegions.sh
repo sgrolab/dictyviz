@@ -14,4 +14,14 @@ else
     FRAME_AVG=0  # User selected "No"
 fi
 
-bsub -n 6 -gpu "num=1" -q gpu_a100 -W 24:00 -J "generateFindRegions" python findRegions.py "$RESULTS_DIR" "$FRAME_AVG"
+# Let user select z slice
+Z_SLICE=$(zenity --entry \
+    --title="Select Z Slice" \
+    --text="Enter the z slice to plot score maps (0-based index):" \
+    --width=300)
+if [ -z "$Z_SLICE" ]; then
+    zenity --error --text="No z slice selected. Exiting." --width=300
+    exit 1
+fi
+
+bsub -n 6 -gpu "num=1" -q gpu_a100 -W 24:00 -J "generateFindRegions" python findRegions.py "$RESULTS_DIR" "$FRAME_AVG" "$Z_SLICE"
