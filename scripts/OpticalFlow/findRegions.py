@@ -25,7 +25,6 @@ def main():
         sys.exit(1)
 
     all_regions = []
-    all_score_maps = []
 
     for frame_str in frame_dirs:
         frame_number = int(frame_str)
@@ -57,11 +56,11 @@ def main():
         for region in optimal_regions:
             all_regions.append((frame_number,) + region)
 
-        all_score_maps.append(score_map)
-
         # Save score map for this frame
         score_map_file = os.path.join(frame_dir, f"flow_score_map_frame_{frame_number}.npy")
         np.save(score_map_file, score_map)
+
+        del score_map
 
     # Find top 3 regions across all frames by score
     all_regions_sorted = sorted(all_regions, key=lambda x: x[-1], reverse=True)
@@ -81,18 +80,29 @@ def main():
     print(f"\n✓ Top 3 flow regions across all frames saved to: {summary_file}")
 
     # Generate movie of score maps for each frame at a single z slice
+    score_map = np.load(score_map_file)
+    width = score_map.shape[2]
+    height = score_map.shape[1]
+
     movie_filename = os.path.join(results_dir, f"flow_score_movie_{z_slice}.mp4")
-    width = all_score_maps[0].shape[2]
-    height = all_score_maps[0].shape[1]
     vid = cv2.VideoWriter(movie_filename, cv2.VideoWriter_fourcc(*'MJPG'), 10, (width, height))
 
-    for frame_idx, score_map in enumerate(all_score_maps):
-        score_map_frame = score_map[frame_idx][z_slice]
-        #convert to 8-bit grayscale
-        score_map_frame = cv2.normalize(score_map_frame, None, 0, 255, cv2.NORM_MINMAX)
+    for frame_str in frame_dirs:
+        frame_number = int(frame_str)
+        frame_dir = os.path.join(results_dir, frame_str)
+        print(f"\nPlotting frame {frame_number}...")
+
+        score_map_file = os.path.join(frame_dir, f"flow_score_map_frame_{frame_number}.npy")
+        score_map = np.load(score_map_file)
+        score_map = score_map[z_slice]
+
+        # Convert to 8-bit grayscale
+        score_map_frame = cv2.normalize(score_map, None, 0, 255, cv2.NORM_MINMAX)
         score_map_frame = cv2.applyColorMap(score_map_frame.astype('uint8'), cmapy.cmap('viridis'))
 
         vid.write(score_map_frame)
+        del score_map
+        del score_map_frame
 
     vid.release()
     print(f"✓ Flow score movie saved to: {movie_filename}")
