@@ -45,17 +45,17 @@ def find_optimal_regions(magnitude_map, variance_map, top_k=3, suppression_radiu
     """
     norm_magnitude = (magnitude_map - magnitude_map.min()) / (magnitude_map.max() - magnitude_map.min())
     norm_variance = (variance_map - variance_map.min()) / (variance_map.max() - variance_map.min())
-    score = norm_magnitude - norm_variance
+    score_map = norm_magnitude - norm_variance
 
     results = []
-    used_mask = np.zeros_like(score, dtype=bool)
+    used_mask = np.zeros_like(score_map, dtype=bool)
 
     for _ in range(top_k):
-        masked_score = np.ma.array(score, mask=used_mask)
+        masked_score = np.ma.array(score_map, mask=used_mask)
         if masked_score.count() == 0:
             break
 
-        max_idx = np.unravel_index(masked_score.argmax(), score.shape)
+        max_idx = np.unravel_index(masked_score.argmax(), score_map.shape)
         depth, row, col = max_idx
 
         results.append((
@@ -64,15 +64,15 @@ def find_optimal_regions(magnitude_map, variance_map, top_k=3, suppression_radiu
             variance_map[depth, row, col], 
             norm_magnitude[depth, row, col], 
             norm_variance[depth, row, col], 
-            score[depth, row, col]
+            score_map[depth, row, col]
         ))
 
         # Suppress a sphere around this region
-        dd, rr, cc = np.ogrid[:score.shape[0], :score.shape[1], :score.shape[2]]
+        dd, rr, cc = np.ogrid[:score_map.shape[0], :score_map.shape[1], :score_map.shape[2]]
         suppression_mask = ((dd - depth)**2 + (rr - row)**2 + (cc - col)**2) <= suppression_radius**2
         used_mask[suppression_mask] = True
 
-    return results
+    return results, score_map
 
 
 def save_analysis_results(magnitude_map, variance_map, optimal_regions, frame_dir, frame_number):
