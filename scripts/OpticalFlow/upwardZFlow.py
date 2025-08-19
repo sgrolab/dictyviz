@@ -9,23 +9,7 @@ matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from OpticalFlow.helpers import flowLoader
-
-def getCellChannelFromJSON(jsonFile):
-    with open(jsonFile) as f:
-        channelSpecs = json.load(f)["channels"]
-    cells_found = False
-    for i, channelInfo in enumerate(channelSpecs):
-        if channelInfo["name"].startswith("cells"):
-            cells = i
-            if cells_found:
-                print(f"Warning: Multiple channels starting with 'cells' found. Multiple cell channels is not supported. Using channel {i}.")
-            print(f"Found cell channel: {i}")
-            cells_found = True
-    if not cells_found:
-        print("Error: No channel starting with 'cells' found in parameters.json.")
-        return None
-    return cells
+from OpticalFlow.helpers import flowLoader, helpers
 
 def main():
     results_dir = sys.argv[1]
@@ -49,7 +33,7 @@ def main():
 
     # Find the channel index for cells
     parent_dir = os.path.dirname(results_dir)
-    cells_channel = getCellChannelFromJSON(os.path.join(parent_dir, 'parameters.json'))
+    cells_channel = helpers.getCellChannelFromJSON(os.path.join(parent_dir, 'parameters.json'))
 
     # Create log file
     log_file = os.path.join(results_dir, 'upward_Z_flow.log')

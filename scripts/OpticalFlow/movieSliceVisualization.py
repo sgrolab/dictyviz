@@ -9,26 +9,10 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from tqdm import tqdm
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from OpticalFlow.helpers import flowLoader
+from OpticalFlow.helpers import flowLoader, helpers
 from scipy.ndimage import gaussian_filter
 from OpticalFlow.optical2Dflow import opticalFlow
 import glob
-
-def getCellChannelFromJSON(jsonFile):
-    with open(jsonFile) as f:
-        channelSpecs = json.load(f)["channels"]
-    cells_found = False
-    for i, channelInfo in enumerate(channelSpecs):
-        if channelInfo["name"].startswith("cells"):
-            cells = i
-            if cells_found:
-                print(f"Warning: Multiple channels starting with 'cells' found. Multiple cell channels is not supported. Using channel {i}.")
-            print(f"Found cell channel: {i}")
-            cells_found = True
-    if not cells_found:
-        print("Error: No channel starting with 'cells' found in parameters.json.")
-        return None
-    return cells
 
 def create_hsv_flow(vx, vy, max_flow=None):
     """Create HSV flow visualization"""
@@ -283,8 +267,8 @@ def create_videos(results_dir, slice_index=None, frame_avg=False, arrow_step=10,
 
         # Find the channel index for cells
         parent_dir = os.path.dirname(results_dir)
-        cells_channel = getCellChannelFromJSON(os.path.join(parent_dir, 'parameters.json'))
-        
+        cells_channel = helpers.getCellChannelFromJSON(os.path.join(parent_dir, 'parameters.json'))
+
         for frame_number in tqdm(available_frames, desc="Processing frames"):
             try:
                 # Check if frames already exist
