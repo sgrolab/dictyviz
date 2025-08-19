@@ -124,16 +124,16 @@ def extract_slice(flow_data, raw_data=None, idx=None):
     
     return vx, vy, vz, conf, raw_slice, idx
 
-def load_first_frames(results_dir, nb_frames, log_file=None):
+def load_first_frames(results_dir, first_frame, nb_frames, log_file=None):
     """
     Load the first nb_frames of flow data from the results directory.
     """
 
-    flow_frame_0 = load_flow_frame(results_dir, 0)
-    lenZ, lenY, lenX = flow_frame_0['vx'].shape
+    first_flow_frame = load_flow_frame(results_dir, first_frame)
+    lenZ, lenY, lenX = first_flow_frame['vx'].shape
     flow_data = np.zeros((3, nb_frames, lenZ, lenY, lenX), dtype=np.float32)  # initialize flow data array
 
-    for frame in range(nb_frames):
+    for i, frame in enumerate(range(first_frame, first_frame + nb_frames)):
         if log_file:
             log_file.write(f"Loading flow data for frame {frame}...\n")
         else:
@@ -144,10 +144,10 @@ def load_first_frames(results_dir, nb_frames, log_file=None):
         flow_frame_vy = flow_frame['vy']
         flow_frame_vz = flow_frame['vz']
 
-        flow_data[0, frame] = flow_frame_vx
-        flow_data[1, frame] = flow_frame_vy
-        flow_data[2, frame] = flow_frame_vz
-    
+        flow_data[0, i] = flow_frame_vx
+        flow_data[1, i] = flow_frame_vy
+        flow_data[2, i] = flow_frame_vz
+
     return flow_data
 
 def load_next_frame(flow_data, results_dir, frame_index, log_file=None):
@@ -155,9 +155,10 @@ def load_next_frame(flow_data, results_dir, frame_index, log_file=None):
     Load the next frame of flow data and update the flow_data array.
     """
     frame_dirs = [d for d in os.listdir(results_dir) if os.path.isdir(os.path.join(results_dir, d))]
+    frame_range = [int(d) for d in frame_dirs if d.isdigit()]
     
-    if frame_index < 0 or frame_index >= len(frame_dirs):
-        print(f"Error: frame_index {frame_index} is out of bounds for flow_data with shape {flow_data.shape}.")
+    if frame_index not in frame_range:
+        print(f"Error: frame_index {frame_index} is out of bounds for frame directories with range {frame_range[0]} - {frame_range[-1]}.")
         return
 
     if log_file:

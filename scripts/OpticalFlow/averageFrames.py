@@ -16,25 +16,30 @@ def main():
         sys.exit(1)
 
     frame_dirs = [d for d in os.listdir(results_dir) if os.path.isdir(os.path.join(results_dir, d))]
+    # remove non-numeric directories
+    frame_dirs = [d for d in frame_dirs if d.isdigit()]
+    frame_dirs.sort(key=int)  # Sort numerically by frame number
 
     # generate log file
     log_file = os.path.join(results_dir, "average_frames.log")
     with open(log_file, 'w') as log:
         try:
+            first_frame = int(frame_dirs[0])
             # calculate the average flow for the first nb_frames
-            flow_data = flowLoader.load_first_frames(results_dir, nb_frames, log_file=log)
+            flow_data = flowLoader.load_first_frames(results_dir, first_frame, nb_frames, log_file=log)
 
             avg_flow = np.mean(flow_data, axis=1)  # average flow across slices
 
-            mid_frame_index = nb_frames // 2
+            mid_frame_index = first_frame + (nb_frames // 2)
             output_dir = os.path.join(results_dir, str(mid_frame_index))
             if not os.path.exists(output_dir):
                 raise FileNotFoundError(f"Output directory {output_dir} does not exist.")
 
-            np.save(os.path.join(output_dir, f"avg_flow_frame_{nb_frames//2}.npy"), avg_flow)
+            np.save(os.path.join(output_dir, f"avg_flow_frame_{mid_frame_index}.npy"), avg_flow)
 
-            for first_frame_index in range(len(frame_dirs)-nb_frames):
-                flow_data = flowLoader.load_next_frame(flow_data, results_dir, first_frame_index + nb_frames, log_file=log)
+            for frame_index in range(len(frame_dirs)-nb_frames):
+                frame_nb = int(frame_dirs[frame_index])
+                flow_data = flowLoader.load_next_frame(flow_data, results_dir, frame_nb + nb_frames, log_file=log)
                 avg_flow = np.mean(flow_data, axis=1)  # average flow across slices
 
                 # save the average flow for this frame
