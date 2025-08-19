@@ -11,6 +11,8 @@ import numpy as np
 import zarr
 import torch
 import logging
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from OpticalFlow.helpers import  helpers
 
 def cutoff_at_threshold(frame, threshold):
     """
@@ -19,7 +21,7 @@ def cutoff_at_threshold(frame, threshold):
     frame[frame < threshold] = 0
     return frame
 
-def compute_3D_opticalflow(zarr_path):
+def compute_3D_opticalflow(zarr_path, channel=None):
 
     parent_dir = os.path.dirname(zarr_path)
     
@@ -30,7 +32,7 @@ def compute_3D_opticalflow(zarr_path):
         zarr_name = zarr_name[:-5]
     
     # Create output directory with zarr name included
-    output_dir = os.path.join(parent_dir, "optical_flow_3Dresults")
+    output_dir = os.path.join(parent_dir, f"optical_flow_3Dresults_{channel}")
 
     # create main output directory
     os.makedirs(output_dir, exist_ok=True)
@@ -48,7 +50,7 @@ def compute_3D_opticalflow(zarr_path):
 
     z_dim, y_dim, x_dim = resArray.shape[2], resArray.shape[3], resArray.shape[4]
 
-    # Determine volume size category
+    # Determine volume size category    
     max_dim = max(z_dim, y_dim, x_dim)
     is_small = max_dim < 400
     is_medium = 400 <= max_dim < 800
@@ -62,23 +64,22 @@ def compute_3D_opticalflow(zarr_path):
     else:  # large
         iters = 8
 
-    num_levels = 2 # fewer pyramid levels for now
     # Adaptive pyramid levels: more levels for larger data
-    # if is_small:
-    #     num_levels = 2
-    # elif is_medium:
-    #     num_levels = 3
-    # else:  # large
-    #     num_levels = 4
+    if is_small:
+        num_levels = 2
+    elif is_medium:
+        num_levels = 3
+    else:  # large
+        num_levels = 4
 
-    scale = 0.8 # less downsampling for now
     # Adaptive scale: finer for small data, coarser for large
-    # if is_small:
-    #     scale = 0.7  # Less downsampling for small volumes
-    # elif is_medium:
-    #     scale = 0.5
-    # else:  # large
-    #     scale = 0.3  # More aggressive downsampling for large volumes
+    if is_small:
+        scale = 0.7  # Less downsampling for small volumes
+    elif is_medium:
+        scale = 0.5
+    else:  # large
+        scale = 0.3  # More aggressive downsampling for large volumes
+    #scale = 0.5  # Fixed scale for now, can be adjusted based on performance needs
 
     # Adaptive spatial size: larger for bigger data
     if is_small:
@@ -112,11 +113,25 @@ def compute_3D_opticalflow(zarr_path):
 
         successful_frames = [] 
 
-        current_frame = resArray[0, 0, :, :, :]  # Get the first frame to determine dimensions
+        # Get the correct channel from parameters.json
+        if channel == "rocks":
+            channel_index = helpers.getRockChannelFromJSON(os.path.join(parent_dir, 'parameters.json'))
+        elif channel == "cells":
+            channel_index = helpers.getCellChannelFromJSON(os.path.join(parent_dir, 'parameters.json'))
+        else:
+            # default to cells if no channel is specified
+            log.write(f"No channel specified, defaulting to 'cells'.")
+            channel_index = helpers.getCellChannelFromJSON(os.path.join(parent_dir, 'parameters.json'))
+        # If channel_index is None, default to 0
+        if channel_index is None:
+            log.write(f"Channel index not found in parameters.json, defaulting to channel 0.")
+            channel_index = 0
+
+        current_frame = resArray[0, channel_index, :, :, :]  # Get the first frame to determine dimensions
         
-        # Cutoff at a threshold to remove noise
-        threshold = 3000 # Hard coded for now
-        current_frame = cutoff_at_threshold(current_frame, threshold)
+        # # Cutoff at a threshold to remove noise
+        # threshold = 3000 # Hard coded for now
+        # current_frame = cutoff_at_threshold(current_frame, threshold)
 
         current_frame_np = np.asarray(current_frame, dtype=np.float32)
 
@@ -151,9 +166,9 @@ def compute_3D_opticalflow(zarr_path):
                 logging.info("GPU is not available")
 
             # get next frame
-            next_frame = resArray[i+1, 0, :, :, :]
+            next_frame = resArray[i+1, channel_index, :, :, :]
 
-            next_frame = cutoff_at_threshold(next_frame, threshold)
+            #next_frame = cutoff_at_threshold(next_frame, threshold)
 
             # Convert to float32 NumPy arrays first (the library expects NumPy, not PyTorch tensors)
             next_frame_np = np.asarray(next_frame, dtype=np.float32)
@@ -239,7 +254,7 @@ def compute_3D_opticalflow(zarr_path):
         # Clear GPU memory
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-            logging.log("\nGPU memory cleared")
+            logging.info("\nGPU memory cleared")
 
         log.write(f"\nIndividual frame results saved in subfolders: {output_dir}")
 
@@ -253,6 +268,8 @@ def main():
         sys.exit(1)
         
     zarr_path = sys.argv[1]
+
+    channel = sys.argv[2] if len(sys.argv) > 2 else None
     
     # validate that zarr_path exists
     if not os.path.exists(zarr_path):
@@ -263,7 +280,7 @@ def main():
     try:
         print(f"Computing 3D optical flow for: {zarr_path}")
 
-        successful_frames = compute_3D_opticalflow(zarr_path)
+        successful_frames = compute_3D_opticalflow(zarr_path, channel)
 
         print("3D optical flow computation completed successfully!")
         print(f"Successfully processed {len(successful_frames)} frame pairs")

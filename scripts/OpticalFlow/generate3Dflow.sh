@@ -9,4 +9,12 @@ if [ -z "$zarr_folder" ]; then
     exit 1
 fi
 
-bsub -n 6 -gpu "num=1" -q gpu_a100 -W 24:00 -J "optical_flow_3D" python 3Dflow.py "${zarr_folder}"
+# Prompt the user to select between the cells or the rocks channel to perform optical flow on
+channel=$(zenity --list --title="Select Channel" --column="Channel" "cells" "rocks" --text="Select the channel to perform optical flow on:")
+# Check if the user canceled the dialog
+if [ -z "$channel" ]; then
+    echo "No channel selected. Exiting."
+    exit 1
+fi
+
+bsub -n 6 -gpu "num=1" -q gpu_a100 -W 24:00 -J "optical_flow_3D" python 3Dflow.py "${zarr_folder}" "${channel}"
