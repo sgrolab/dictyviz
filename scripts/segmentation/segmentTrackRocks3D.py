@@ -73,12 +73,15 @@ def __main__():
         os.makedirs(outputDir)
 
     # load zarr to set dataset shape
-    dataset = zarr.open(zarrPath, mode='r')
-    datasetShape = dataset.shape
-    print(f"Dataset shape: {datasetShape}")
+    root = zarr.open(zarrPath, mode='r')
+    resArray = root['0']['0'] 
+    resArrayShape = resArray.shape # (time, channels, z, y, x)
+    del resArray
 
     # Set time range from command line arguments
     tRange = range(int(sys.argv[2]), int(sys.argv[3]))
+    # Define the zRange for segmentation
+    zRange = (4, 90) # Adjust this range as needed
 
     regionProps = []
     uint16Warning = False
@@ -127,9 +130,6 @@ def __main__():
                     print(f"Otsu thresholded rocks image already exists. Skipping processing for time point {t}.")
                     rocksOtsuThreshold = tiff.imread(rocksOtsuPath)
                 print("Segmenting rocks using watershed...")
-
-                # Define the zRange for segmentation
-                zRange = (4, 90) # Adjust this range as needed
             
                 coords, labels = segmentRocksWatershed(rocksOtsuThreshold, zRange)
 
@@ -189,31 +189,35 @@ def __main__():
         trackDf.to_csv(tracksPath, index=False)
         if len(graph)!=0:
             print(len(graph))
-            nx.write_graphml(graph, graphPath)
+            #nx.write_graphml(graph, graphPath)
         print(f"Tracking results saved to {tracksPath} and {graphPath}")
     else:
         print(f"Tracking results already exist at {tracksPath}. Skipping tracking.")
         trackDf = pd.read_csv(tracksPath)
-        if os.path.exists(graphPath):
-            print(f"Loading tracking graph from {graphPath}...")
-            graph = nx.read_graphml(graphPath)
+        # if os.path.exists(graphPath):
+        #     print(f"Loading tracking graph from {graphPath}...")
+        #     graph = nx.read_graphml(graphPath)
 
     # TODO: Go frame by frame and write trackedLabels to a zarr to save memory
     # Link labels across frames
+    trackedLabelsPath = outputDir + "tracked_labels.tiff"
     if not os.path.exists(trackedLabelsPath):
         print("Using tracks to link labels across frames...")
-        trackedLabelsPath = outputDir + "tracked_labels.tiff"
+        # Generate an array to hold the tracked labels, must be same shape as the original dataset (time, z, y, x) to be imported into Imaris
         if uint16Warning:
-            trackedLabels = np.zeros((datasetShape[2], datasetShape[3], datasetShape[4]), dtype="uint16")
+            trackedLabels = np.zeros((resArrayShape[0], resArrayShape[2], resArrayShape[3], resArrayShape[4]), dtype="uint16") # (time, z, y, x)
         else:
-            trackedLabels = np.zeros((datasetShape[2], datasetShape[3], datasetShape[4]), dtype="uint8")
+            trackedLabels = np.zeros((resArrayShape[0], resArrayShape[2], resArrayShape[3], resArrayShape[4]), dtype="uint8")
         for t in tRange:
             labelsPath = outputDir + f"t{t}/segmented_rocks.tif"
             labels = tiff.imread(labelsPath)
             for i, row in trackDf[trackDf["frame"] == t].iterrows():
                 inds = labels == row["label"]
-                trackedLabels[t][inds] = int(row["tree_id"]) + 1
+                zRange = (4, 4+inds.shape[0]) # TODO: Remove in the future when zRange is consistent for all frames
+                trackedLabels[t][zRange[0]:zRange[1]][inds] = int(row["tree_id"]) + 1
+            del labels
 
+        # Save the tracked labels
         tiff.imwrite(trackedLabelsPath, trackedLabels)
     else:
         print(f"Tracked labels already exist at {trackedLabelsPath}. Skipping linking.")
