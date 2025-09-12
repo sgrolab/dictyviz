@@ -9,6 +9,7 @@ from tqdm import tqdm
 import networkx as nx
 
 from scipy import ndimage as ndi
+from skimage.filters import threshold_mean
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
 from skimage.measure import regionprops_table
@@ -40,13 +41,25 @@ def applyOtsuThreshold(rocksGaussianFiltered):
 
     return rocksOtsuThreshold
 
+def applyMeanThreshold(rocksGaussianFiltered):
+    """Apply mean thresholding to the Gaussian filtered rocks image on a slice by slice basis."""
+    rocksMeanThreshold = np.zeros_like(rocksGaussianFiltered, dtype=bool)
+    for zSlice in range(rocksGaussianFiltered.shape[0]):
+        meanThreshold = threshold_mean(rocksGaussianFiltered[zSlice])
+        rocksMeanThreshold[zSlice] = rocksGaussianFiltered[zSlice] > meanThreshold
+
+    return rocksMeanThreshold
+
 def segmentRocksWatershed(rocksOtsuThreshold, zRange):
     """Segment rocks using the watershed algorithm."""
 
+    # Pad the image with zeros (background) on all sides
+    rocksPadded = np.pad(rocksOtsuThreshold, pad_width=1, mode='constant', constant_values=0)
+
     # Generate markers from the center zSlice as local maxima of the distance to the background
-    distance = ndi.distance_transform_edt(rocksOtsuThreshold[zRange[0]:zRange[1]])
-    distance_smoothed = ndi.gaussian_filter(distance, sigma=21)
-    coords = peak_local_max(distance_smoothed, 
+    distance = ndi.distance_transform_edt(rocksPadded)
+    distance_smoothed = ndi.gaussian_filter(distance, sigma=11)
+    coords = peak_local_max(distance_smoothed[zRange[0]:zRange[1]], 
                             min_distance=50, 
                             threshold_rel=0.1, 
                             exclude_border=False, 
@@ -54,10 +67,14 @@ def segmentRocksWatershed(rocksOtsuThreshold, zRange):
     print(f"Found {len(coords)} local maxima as markers.")
 
     # Use the markers to fill out the watershed in all zSlices
-    mask = np.zeros(rocksOtsuThreshold[zRange[0]:zRange[1]].shape, dtype=bool)
+    mask = np.zeros(rocksPadded[zRange[0]:zRange[1]].shape, dtype=bool)
     mask[tuple(coords.T)] = True
     markers, _ = ndi.label(mask)
-    labels = watershed(-distance, markers, mask=rocksOtsuThreshold[zRange[0]:zRange[1]])
+    labels = watershed(-distance[zRange[0]:zRange[1]], markers, mask=rocksPadded[zRange[0]:zRange[1]])
+
+    # Unpad labels and coords
+    labels = labels[1:-1, 1:-1, 1:-1]
+    coords = coords - 1  # Adjust coords to match unpadded labels
 
     return coords, labels
     
@@ -81,7 +98,7 @@ def __main__():
     # Set time range from command line arguments
     tRange = range(int(sys.argv[2]), int(sys.argv[3]))
     # Define the zRange for segmentation
-    zRange = (4, 90) # Adjust this range as needed
+    zRange = (5, 90) # Adjust this range as needed
 
     regionProps = []
     uint16Warning = False
@@ -97,7 +114,8 @@ def __main__():
             segmentedRocksPath = tpOutputDir + "segmented_rocks.tif"
             if not os.path.exists(segmentedRocksPath):
                 # If not, check if the Otsu thresholded image exists
-                rocksOtsuPath = tpOutputDir + "rocks_gaussian_filtered_otsu_threshold.tif"
+                # TODO: switch to mean thresholding
+                rocksOtsuPath = tpOutputDir + "rocks_gaussian_filtered_mean_threshold.tif"
                 if not os.path.exists(rocksOtsuPath):
                     # If not, check if the shadows removed image exists
                     rocksImgPath = tpOutputDir + "cell_shadows_removed_" + str(THRESHOLD) + "thresh_" + str(SHADOW_MED_FILT) + "medfilt.tif"
@@ -117,7 +135,8 @@ def __main__():
                     rocksGaussianFiltered = applyGaussianFilter(rocksImgFiltered)
 
                     # Apply Otsu's thresholding to the Gaussian filtered rocks image
-                    rocksOtsuThreshold = applyOtsuThreshold(rocksGaussianFiltered)
+                    #rocksOtsuThreshold = applyOtsuThreshold(rocksGaussianFiltered)
+                    rocksOtsuThreshold = applyMeanThreshold(rocksGaussianFiltered)
 
                     #Save the Otsu thresholded image
                     tiff.imwrite(rocksOtsuPath, rocksOtsuThreshold.astype("uint16"))
@@ -141,6 +160,9 @@ def __main__():
 
                 # Save the segmented rocks image
                 tiff.imwrite(segmentedRocksPath, labels.astype("uint16"))
+                csvPath = tpOutputDir + "rock_marker_coords.csv"
+                pd.DataFrame(coords, columns=["z", "y", "x"]).to_csv(csvPath, index=False)
+                print(f"Rock marker coordinates saved to {csvPath}")
                 print(f"Segmented rocks image saved to {segmentedRocksPath}")
 
                 del rocksOtsuThreshold
@@ -204,11 +226,12 @@ def __main__():
     if not os.path.exists(trackedLabelsPath):
         print("Using tracks to link labels across frames...")
         # Generate an array to hold the tracked labels, must be same shape as the original dataset (time, z, y, x) to be imported into Imaris
-        if uint16Warning:
-            trackedLabels = np.zeros((resArrayShape[0], resArrayShape[2], resArrayShape[3], resArrayShape[4]), dtype="uint16") # (time, z, y, x)
-        else:
-            trackedLabels = np.zeros((resArrayShape[0], resArrayShape[2], resArrayShape[3], resArrayShape[4]), dtype="uint8")
+        # if uint16Warning:
+        trackedLabels = np.zeros((resArrayShape[0], resArrayShape[2], resArrayShape[3], resArrayShape[4]), dtype="uint16") # (time, z, y, x)
+        # else:
+        #     trackedLabels = np.zeros((resArrayShape[0], resArrayShape[2], resArrayShape[3], resArrayShape[4]), dtype="uint8")
         for t in tRange:
+            print(f"Linking labels for timepoint {t}...")
             labelsPath = outputDir + f"t{t}/segmented_rocks.tif"
             labels = tiff.imread(labelsPath)
             for i, row in trackDf[trackDf["frame"] == t].iterrows():
@@ -218,7 +241,7 @@ def __main__():
             del labels
 
         # Save the tracked labels
-        tiff.imwrite(trackedLabelsPath, trackedLabels)
+        tiff.imwrite(trackedLabelsPath, trackedLabels, imagej=True, metadata={'axes': 'TZYX'})
     else:
         print(f"Tracked labels already exist at {trackedLabelsPath}. Skipping linking.")
         trackedLabels = tiff.imread(trackedLabelsPath)
@@ -263,4 +286,3 @@ def __main__():
 
 if __name__ == "__main__":
     __main__()
-
