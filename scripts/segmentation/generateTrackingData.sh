@@ -23,4 +23,4 @@ fi
 bsub -K -J "remove_cell_shadows" -n 8 -gpu "num=1" -q gpu_h200 -W 24:00 python3 removeCellShadows.py "$RESULTS_DIR" "$START_FRAME" "$END_FRAME"
 
 # Submit the tracking job to the cluster
-bsub -J "segment_track_rocks" -n 8 -W 24:00 python3 segmentTrackRocks.py "$RESULTS_DIR" "$START_FRAME" "$END_FRAME"
+bsub -J "segment_track_rocks" -n 16 -W 24:00 python3 segmentTrackRocks.py "$RESULTS_DIR" "$START_FRAME" "$END_FRAME"
