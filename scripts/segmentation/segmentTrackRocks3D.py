@@ -9,6 +9,10 @@ from tqdm import tqdm
 import networkx as nx
 
 from scipy import ndimage as ndi
+<<<<<<< HEAD
+=======
+from skimage.filters import threshold_mean
+>>>>>>> main
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
 from skimage.measure import regionprops_table
@@ -40,6 +44,7 @@ def applyOtsuThreshold(rocksGaussianFiltered):
 
     return rocksOtsuThreshold
 
+<<<<<<< HEAD
 def segmentRocksWatershed(rocksOtsuThreshold, zRange):
     """Segment rocks using the watershed algorithm."""
 
@@ -47,6 +52,27 @@ def segmentRocksWatershed(rocksOtsuThreshold, zRange):
     distance = ndi.distance_transform_edt(rocksOtsuThreshold[zRange[0]:zRange[1]])
     distance_smoothed = ndi.gaussian_filter(distance, sigma=21)
     coords = peak_local_max(distance_smoothed, 
+=======
+def applyMeanThreshold(rocksGaussianFiltered):
+    """Apply mean thresholding to the Gaussian filtered rocks image on a slice by slice basis."""
+    rocksMeanThreshold = np.zeros_like(rocksGaussianFiltered, dtype=bool)
+    for zSlice in range(rocksGaussianFiltered.shape[0]):
+        meanThreshold = threshold_mean(rocksGaussianFiltered[zSlice])
+        rocksMeanThreshold[zSlice] = rocksGaussianFiltered[zSlice] > meanThreshold
+
+    return rocksMeanThreshold
+
+def segmentRocksWatershed(rocksOtsuThreshold, zRange):
+    """Segment rocks using the watershed algorithm."""
+
+    # Pad the image with zeros (background) on all sides
+    rocksPadded = np.pad(rocksOtsuThreshold, pad_width=1, mode='constant', constant_values=0)
+
+    # Generate markers from the center zSlice as local maxima of the distance to the background
+    distance = ndi.distance_transform_edt(rocksPadded)
+    distance_smoothed = ndi.gaussian_filter(distance, sigma=11)
+    coords = peak_local_max(distance_smoothed[zRange[0]:zRange[1]], 
+>>>>>>> main
                             min_distance=50, 
                             threshold_rel=0.1, 
                             exclude_border=False, 
@@ -54,6 +80,7 @@ def segmentRocksWatershed(rocksOtsuThreshold, zRange):
     print(f"Found {len(coords)} local maxima as markers.")
 
     # Use the markers to fill out the watershed in all zSlices
+<<<<<<< HEAD
     mask = np.zeros(rocksOtsuThreshold[zRange[0]:zRange[1]].shape, dtype=bool)
     mask[tuple(coords.T)] = True
     markers, _ = ndi.label(mask)
@@ -71,6 +98,18 @@ def findCentroids(labels):
             centroids.append(region.centroid)
     
     return np.array(centroids)
+=======
+    mask = np.zeros(rocksPadded[zRange[0]:zRange[1]].shape, dtype=bool)
+    mask[tuple(coords.T)] = True
+    markers, _ = ndi.label(mask)
+    labels = watershed(-distance[zRange[0]:zRange[1]], markers, mask=rocksPadded[zRange[0]:zRange[1]])
+
+    # Unpad labels and coords
+    labels = labels[1:-1, 1:-1, 1:-1]
+    coords = coords - 1  # Adjust coords to match unpadded labels
+
+    return coords, labels
+>>>>>>> main
     
 def __main__():
     #TODO: switch to saving as zarrs instead of tiffs
@@ -83,15 +122,32 @@ def __main__():
     if not os.path.exists(outputDir):
         os.makedirs(outputDir)
 
+<<<<<<< HEAD
     # Set time range from command line arguments
     tRange = range(int(sys.argv[2]), int(sys.argv[3]))
 
     allLabels = []
+=======
+    # load zarr to set dataset shape
+    root = zarr.open(zarrPath, mode='r')
+    resArray = root['0']['0'] 
+    resArrayShape = resArray.shape # (time, channels, z, y, x)
+    del resArray
+
+    # Set time range from command line arguments
+    tRange = range(int(sys.argv[2]), int(sys.argv[3]))
+    # Define the zRange for segmentation
+    zRange = (5, 90) # Adjust this range as needed
+
+    regionProps = []
+    uint16Warning = False
+>>>>>>> main
 
     for t in tRange:
 
         tpOutputDir = outputDir + f"t{t}/"
 
+<<<<<<< HEAD
         # Check if segmentation has already been done
         segmentedRocksPath = tpOutputDir + "segmented_rocks.tif"
         if not os.path.exists(segmentedRocksPath):
@@ -146,16 +202,103 @@ def __main__():
         allLabels.append(labels)
 
     # Generate tracks from labels
+=======
+        # Check if centroids have been calculated for this timepoint
+        centroidsPath = tpOutputDir + "rock_centroids.csv"
+        if not os.path.exists(centroidsPath):
+            # If not, check if segmentation has already been done
+            segmentedRocksPath = tpOutputDir + "segmented_rocks.tif"
+            if not os.path.exists(segmentedRocksPath):
+                # If not, check if the Otsu thresholded image exists
+                # TODO: switch to mean thresholding
+                rocksOtsuPath = tpOutputDir + "rocks_gaussian_filtered_mean_threshold.tif"
+                if not os.path.exists(rocksOtsuPath):
+                    # If not, check if the shadows removed image exists
+                    rocksImgPath = tpOutputDir + "cell_shadows_removed_" + str(THRESHOLD) + "thresh_" + str(SHADOW_MED_FILT) + "medfilt.tif"
+                    if not os.path.exists(rocksImgPath):
+                        print(f"\nShadows removed image for timepoint {t} does not exist. Skipping...")
+                        continue
+                    else:
+                        print(f"Loading shadows removed image for timepoint {t}...")
+                        rocksImgFiltered = tiff.imread(rocksImgPath)
+                    print("Applying Gaussian filter and Otsu's thresholding to the rocks image...")
+                    # Invert rock channel
+                    rocksImgFiltered = 65535 - rocksImgFiltered
+                    # return 0 values to 0
+                    rocksImgFiltered[rocksImgFiltered == 65535] = 0
+
+                    # Apply Gaussian filter to the rocks image
+                    rocksGaussianFiltered = applyGaussianFilter(rocksImgFiltered)
+
+                    # Apply Otsu's thresholding to the Gaussian filtered rocks image
+                    #rocksOtsuThreshold = applyOtsuThreshold(rocksGaussianFiltered)
+                    rocksOtsuThreshold = applyMeanThreshold(rocksGaussianFiltered)
+
+                    #Save the Otsu thresholded image
+                    tiff.imwrite(rocksOtsuPath, rocksOtsuThreshold.astype("uint16"))
+                    print(f"Otsu thresholded rocks image saved to {rocksOtsuPath}")
+
+                    # Clear memory
+                    del rocksGaussianFiltered
+                    del rocksImgFiltered
+                else:
+                    print(f"Otsu thresholded rocks image already exists. Skipping processing for time point {t}.")
+                    rocksOtsuThreshold = tiff.imread(rocksOtsuPath)
+                print("Segmenting rocks using watershed...")
+            
+                coords, labels = segmentRocksWatershed(rocksOtsuThreshold, zRange)
+
+                # Check if there are more than 256 unique labels
+                numLabels = len(np.unique(labels))
+                if numLabels > 256:
+                    uint16Warning = True
+                    print(f"Warning: More than 256 unique labels ({numLabels}) found in the segmented rocks image. Tracked labels will be saved as uint16.")
+
+                # Save the segmented rocks image
+                tiff.imwrite(segmentedRocksPath, labels.astype("uint16"))
+                csvPath = tpOutputDir + "rock_marker_coords.csv"
+                pd.DataFrame(coords, columns=["z", "y", "x"]).to_csv(csvPath, index=False)
+                print(f"Rock marker coordinates saved to {csvPath}")
+                print(f"Segmented rocks image saved to {segmentedRocksPath}")
+
+                del rocksOtsuThreshold
+            else:
+                print(f"Segmented rocks image already exists. Skipping processing for time point {t}.")
+                labels = tiff.imread(segmentedRocksPath)
+                # Check if there are more than 256 unique labels
+                numLabels = len(np.unique(labels))
+                if numLabels > 256:
+                    uint16Warning = True
+                    print(f"Warning: More than 256 unique labels ({numLabels}) found in the segmented rocks image. Tracked labels will be saved as uint16.")
+            
+            # Find centroids of the segmented rocks
+            centroids = pd.DataFrame(regionprops_table(labels, properties=['label', 'centroid']))
+            centroids['frame'] = t
+            regionProps.append(centroids)
+            # Save centroids to CSV
+            centroids.to_csv(centroidsPath, index=False)
+            del labels
+        else:
+            print(f"Centroids already exist for timepoint {t}. Skipping segmentation.")
+            centroids = pd.read_csv(centroidsPath)
+            regionProps.append(centroids)
+
+    # Generate tracks from centroids
+>>>>>>> main
     tracksPath = outputDir + "rock_tracks.csv"
     graphPath = outputDir + "rock_tracking.graphml"
     if not os.path.exists(tracksPath):
         # Calculate centroids for each label in each frame
         print("Calculating centroids for each label in each frame...")
+<<<<<<< HEAD
         regionProps = []
         for frame, label in enumerate(allLabels):
             df = pd.DataFrame(regionprops_table(label, properties=['label', 'centroid']))
             df['frame'] = frame
             regionProps.append(df)
+=======
+
+>>>>>>> main
         regionPropsDf = pd.concat(regionProps)
 
         # Use LapTrack to track the rocks
@@ -173,19 +316,32 @@ def __main__():
         trackDf.to_csv(tracksPath, index=False)
         if len(graph)!=0:
             print(len(graph))
+<<<<<<< HEAD
             nx.write_graphml(graph, graphPath)
+=======
+            #nx.write_graphml(graph, graphPath)
+>>>>>>> main
         print(f"Tracking results saved to {tracksPath} and {graphPath}")
     else:
         print(f"Tracking results already exist at {tracksPath}. Skipping tracking.")
         trackDf = pd.read_csv(tracksPath)
+<<<<<<< HEAD
         if os.path.exists(graphPath):
             print(f"Loading tracking graph from {graphPath}...")
             graph = nx.read_graphml(graphPath)
 
+=======
+        # if os.path.exists(graphPath):
+        #     print(f"Loading tracking graph from {graphPath}...")
+        #     graph = nx.read_graphml(graphPath)
+
+    # TODO: Go frame by frame and write trackedLabels to a zarr to save memory
+>>>>>>> main
     # Link labels across frames
     trackedLabelsPath = outputDir + "tracked_labels.tiff"
     if not os.path.exists(trackedLabelsPath):
         print("Using tracks to link labels across frames...")
+<<<<<<< HEAD
         trackedLabels = np.zeros_like(allLabels)
 
         for i, row in trackDf.iterrows():
@@ -193,6 +349,25 @@ def __main__():
             inds = allLabels[frame] == row["label"]
             trackedLabels[frame][inds] = int(row["tree_id"]) + 1
         tiff.imwrite(trackedLabelsPath, trackedLabels.astype("uint16"))
+=======
+        # Generate an array to hold the tracked labels, must be same shape as the original dataset (time, z, y, x) to be imported into Imaris
+        # if uint16Warning:
+        trackedLabels = np.zeros((resArrayShape[0], resArrayShape[2], resArrayShape[3], resArrayShape[4]), dtype="uint16") # (time, z, y, x)
+        # else:
+        #     trackedLabels = np.zeros((resArrayShape[0], resArrayShape[2], resArrayShape[3], resArrayShape[4]), dtype="uint8")
+        for t in tRange:
+            print(f"Linking labels for timepoint {t}...")
+            labelsPath = outputDir + f"t{t}/segmented_rocks.tif"
+            labels = tiff.imread(labelsPath)
+            for i, row in trackDf[trackDf["frame"] == t].iterrows():
+                inds = labels == row["label"]
+                zRange = (4, 4+inds.shape[0]) # TODO: Remove in the future when zRange is consistent for all frames
+                trackedLabels[t][zRange[0]:zRange[1]][inds] = int(row["tree_id"]) + 1
+            del labels
+
+        # Save the tracked labels
+        tiff.imwrite(trackedLabelsPath, trackedLabels, imagej=True, metadata={'axes': 'TZYX'})
+>>>>>>> main
     else:
         print(f"Tracked labels already exist at {trackedLabelsPath}. Skipping linking.")
         trackedLabels = tiff.imread(trackedLabelsPath)
@@ -237,4 +412,7 @@ def __main__():
 
 if __name__ == "__main__":
     __main__()
+<<<<<<< HEAD
 
+=======
+>>>>>>> main
