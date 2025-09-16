@@ -34,5 +34,5 @@ def main(segmentation_path):
 
 if __name__ == "__main__":
     #segmentation_path = "Y:\\jennifer\\cryolite\\cryolite_mixin_test65_2024-04-16\\WS205_overnight_day2\\2024-04-17_ERH_mixin65_plate2_WS205_overnight_day2_ERH Red FarRed_crop2\\segmentation\\"
-    segmentation_path = "/groups/sgro/sgrolab/jennifer/cryolite/cryolite_mixin_test65_2024-04-16/WS205_overnight_day2/2024-04-17_ERH_mixin65_plate2_WS205_overnight_day2_ERH Red FarRed_crop2/segmentation/"
+    segmentation_path = "/groups/sgro/sgrolab/jennifer/cryolite/cryolite_mixin_test65_2024-04-16/WS205_overnight_day2/2024-04-17_ERH_mixin65_plate2_WS205_overnight_day2_ERH Red FarRed/segmentation/"
     main(segmentation_path)

@@ -17,4 +17,4 @@ if [ -z "$channel" ]; then
     exit 1
 fi
 
-bsub -n 6 -gpu "num=1" -q gpu_h200 -W 24:00 -J "optical_flow_3D" python 3Dflow.py "${zarr_folder}" "${channel}"
+bsub -n 12 -gpu "num=1" -q gpu_h200 -W 24:00 -J "optical_flow_3D" python 3Dflow.py "${zarr_folder}" "${channel}"
