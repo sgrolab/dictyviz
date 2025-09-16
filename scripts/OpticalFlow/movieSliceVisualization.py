@@ -77,7 +77,7 @@ def normalize_vz(vz):
     
     return vz_normalized
 
-def create_xy_flow_frame(vx, vy, raw_slice, max_flow=None, arrow_step=10):
+def create_xy_flow_frame(vx, vy, conf, raw_slice, max_flow=None, arrow_step=10):
     """Create a frame with raw image and XY flow visualization"""
     
     # Set up figure with two panels side by side
@@ -100,10 +100,22 @@ def create_xy_flow_frame(vx, vy, raw_slice, max_flow=None, arrow_step=10):
     
     # Flow visualization panel
     ax_flow = fig.add_subplot(gs[0, 1])
+
+    # Use confidence to mask low-confidence vectors if available
+    if conf is not None:
+        print("here")
+        conf_threshold = np.percentile(conf, 20)  # Mask lowest 20% confidence
+        vx_masked = np.where(conf >= conf_threshold, vx, 0)
+        vy_masked = np.where(conf >= conf_threshold, vy, 0)
+    else:
+        vx_masked = vx
+        vy_masked = vy
+
+    breakpoint()
     
     # Create HSV flow visualization
-    bgr, magnitude, max_flow = create_hsv_flow(vx, vy, max_flow)
-    
+    bgr, magnitude, max_flow = create_hsv_flow(vx_masked, vy_masked, max_flow)
+
     # Generate color wheel legend
     legend = opticalFlow.create_flow_color_wheel(100, 100)
     legend_rgb = cv2.cvtColor(legend, cv2.COLOR_BGR2RGB)
@@ -143,7 +155,7 @@ def create_xy_flow_frame(vx, vy, raw_slice, max_flow=None, arrow_step=10):
     
     return img, max_flow
 
-def create_vz_flow_frame(vz, raw_slice):
+def create_vz_flow_frame(vz, conf, raw_slice):
     """Create a frame with raw image and vz flow visualization"""
     
     # Set up figure with two panels side by side
@@ -152,10 +164,17 @@ def create_vz_flow_frame(vz, raw_slice):
     
     # Normalize vz with tile-based approach
     vz_normalized = normalize_vz(vz)
-    
+
+    # Use confidence to mask low-confidence vectors if available
+    if conf is not None:
+        conf_threshold = np.percentile(conf, 20)  # Mask lowest 20% confidence
+        vz_masked = np.where(conf >= conf_threshold, vz_normalized, 0)
+    else:
+        vz_masked = vz_normalized
+
     # vz flow panel
     ax_vz = fig.add_subplot(gs[0, 1])
-    im = ax_vz.imshow(vz_normalized, cmap='RdBu_r', origin='lower', vmin=-1, vmax=1)
+    im = ax_vz.imshow(vz_masked, cmap='RdBu_r', origin='lower', vmin=-1, vmax=1)
     plt.colorbar(im, ax=ax_vz, shrink=0.8)
     ax_vz.set_title('Out-of-plane Flow (vz)', fontsize=14)
     
@@ -306,7 +325,7 @@ def create_videos(results_dir, slice_index=None, frame_avg=False, arrow_step=10,
                 
                 # Create XY flow frame if it doesn't exist
                 if not os.path.exists(xy_frame_path):
-                    xy_frame, frame_max_flow = create_xy_flow_frame(vx, vy, raw_slice, max_flow, arrow_step)
+                    xy_frame, frame_max_flow = create_xy_flow_frame(vx, vy, conf, raw_slice, max_flow, arrow_step)
                     
                     # Update max_flow for consistent scaling across frames
                     if max_flow is None:
@@ -316,7 +335,7 @@ def create_videos(results_dir, slice_index=None, frame_avg=False, arrow_step=10,
                 
                 # Create vz flow frame if it doesn't exist
                 if not os.path.exists(vz_frame_path):
-                    vz_frame = create_vz_flow_frame(vz, raw_slice)
+                    vz_frame = create_vz_flow_frame(vz, conf, raw_slice)
                     cv2.imwrite(vz_frame_path, cv2.cvtColor(vz_frame, cv2.COLOR_RGB2BGR))
                 
             except Exception as e:
