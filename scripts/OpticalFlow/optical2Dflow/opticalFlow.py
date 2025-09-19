@@ -187,21 +187,21 @@ def make_movie(output_dir, fps=10):
 
     num_frames, height, width, _ = flow_raw.shape
 
-    hsv = np.zeros((height, width, 3), dtype=np.uint8)  # initialize hsv image
+    hsv = np.zeros((num_frames, height, width, 3), dtype=np.uint8)  # initialize hsv image
     hsv[..., 1] = 255  # set saturation to maximum
-    
+
+    mag, ang = cv2.cartToPolar(flow_raw[..., 0], flow_raw[..., 1])
+    hsv[..., 0] = ang * 180 / np.pi / 2
+    hsv[..., 2] = np.clip(mag * (255/10), 0, 255).astype(np.uint8)
+
     # use h.264 codec for better compression and compatibility
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
     for frame_index in range(num_frames):
-        curr_frame_flow = flow_raw[frame_index]
+        curr_frame_flow = hsv[frame_index]
 
-        mag, ang = cv2.cartToPolar(curr_frame_flow[..., 0], curr_frame_flow[..., 1])
-        hsv[..., 0] = ang * 180 / np.pi / 2
-        hsv[..., 2] = np.clip(mag * (255/10), 0, 255).astype(np.uint8)
-
-        rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        rgb_flow = cv2.cvtColor(curr_frame_flow, cv2.COLOR_HSV2BGR)
 
         # Create a copy of the flow visualization
         final_frame = rgb_flow.copy()
