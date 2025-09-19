@@ -103,15 +103,13 @@ def create_xy_flow_frame(vx, vy, conf, raw_slice, max_flow=None, arrow_step=10):
 
     # Use confidence to mask low-confidence vectors if available
     if conf is not None:
-        print("here")
         conf_threshold = np.percentile(conf, 20)  # Mask lowest 20% confidence
+        print(f"Confidence threshold: {conf_threshold}")
         vx_masked = np.where(conf >= conf_threshold, vx, 0)
         vy_masked = np.where(conf >= conf_threshold, vy, 0)
     else:
         vx_masked = vx
         vy_masked = vy
-
-    breakpoint()
     
     # Create HSV flow visualization
     bgr, magnitude, max_flow = create_hsv_flow(vx_masked, vy_masked, max_flow)

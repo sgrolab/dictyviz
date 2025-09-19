@@ -13,7 +13,7 @@ def load_flow_frame(results_dir, frame_number):
     if not os.path.exists(frame_dir):
         raise FileNotFoundError(f"Frame directory {frame_dir} does not exist")
     
-    components = ['vx', 'vy', 'vz']
+    components = ['vx', 'vy', 'vz', 'confidence']
     flow_data = {}
     
     for comp in components:
@@ -52,8 +52,14 @@ def load_average_flow_frame(results_dir, frame_number):
         'vx': avg_flow[0],
         'vy': avg_flow[1],
         'vz': avg_flow[2] if avg_flow.shape[0] > 2 else None,
-        'confidence': avg_flow[3] if avg_flow.shape[0] > 3 else None
+        # 'confidence': avg_flow[3] if avg_flow.shape[0] > 3 else None
     }
+
+    flow_conf_path = os.path.join(frame_dir, f"optical_flow_confidence.npy")
+    if os.path.exists(flow_conf_path):
+        flow_data['confidence'] = np.load(flow_conf_path)
+    else:
+        flow_data['confidence'] = None
     return flow_data
 
 def load_raw_data(parent_dir, frame_number, cells_channel, log_file=None):
