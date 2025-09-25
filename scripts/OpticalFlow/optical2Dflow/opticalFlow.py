@@ -44,26 +44,35 @@ def compute_farneback_optical_flow(zarr_path, channel, cropID, output_dir, log_f
     height = maxZ.shape[3]
     width = maxZ.shape[4]
 
+    # Normalize all frames together
+    all_frames_raw = maxZ[:, channel, 0, ...]
+    max_val = all_frames_raw.max()
+    min_val = all_frames_raw.min()
+    all_frames_norm = ((all_frames_raw - min_val) / (max_val - min_val)) * 255
+    all_frames = all_frames_norm.astype(np.uint8)
+
     # hsv = np.zeros((height, width, 3), dtype=np.uint8)  # initialize hsv image
     # hsv[..., 1] = 255  # set saturation to maximum
     flow_list = []  # list to store optical flow data
     
-    prev_frame_raw = maxZ[0,channel,0,:,:]
-    prev_frame = cv2.normalize(prev_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
-    prev_frame = prev_frame.astype(np.uint8)
-    prev_frame = enhance_cell_contrast(prev_frame)
+    # prev_frame_raw = maxZ[0,channel,0,:,:]
+    # prev_frame = cv2.normalize(prev_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
+    # prev_frame = prev_frame.astype(np.uint8)
 
-    prev_frame = cv2.bilateralFilter(prev_frame, d=5, sigmaColor=35, sigmaSpace=5)
+    prev_frame = all_frames[0]
+    prev_frame = enhance_cell_contrast(prev_frame)
+    # prev_frame = cv2.bilateralFilter(prev_frame, d=5, sigmaColor=35, sigmaSpace=5)
 
     prev_flow = None
 
     for frame_index in range (1, num_frames):
-        curr_frame_raw = maxZ[frame_index, channel, 0, :, :]
-        curr_frame = cv2.normalize(curr_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
-        curr_frame = curr_frame.astype(np.uint8)
-        curr_frame = enhance_cell_contrast(curr_frame)
+        # curr_frame_raw = maxZ[frame_index, channel, 0, :, :]
+        # curr_frame = cv2.normalize(curr_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
+        # curr_frame = curr_frame.astype(np.uint8)
 
-        curr_frame = cv2.bilateralFilter(curr_frame, d=5, sigmaColor=35, sigmaSpace=5)
+        curr_frame = all_frames[frame_index]
+        curr_frame = enhance_cell_contrast(curr_frame)
+        # curr_frame = cv2.bilateralFilter(curr_frame, d=5, sigmaColor=35, sigmaSpace=5)
 
         flow = cv2.calcOpticalFlowFarneback(
             prev=prev_frame, next=curr_frame, flow=None,
@@ -192,7 +201,7 @@ def make_movie(output_dir, fps=10):
 
     mag, ang = cv2.cartToPolar(flow_raw[..., 0], flow_raw[..., 1])
     hsv[..., 0] = ang * 180 / np.pi / 2
-    hsv[..., 2] = np.clip(mag * (255/10), 0, 255).astype(np.uint8)
+    hsv[..., 2] = np.clip(mag * 255, 0, 255).astype(np.uint8) # dim = 2550, medium = 25500, bright = 255000
 
     # use h.264 codec for better compression and compatibility
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -205,6 +214,21 @@ def make_movie(output_dir, fps=10):
 
         # Create a copy of the flow visualization
         final_frame = rgb_flow.copy()
+
+        # Create histogram visualization
+        hist_image = create_flow_histogram(mag, width, height)
+        hist_h, hist_w = hist_image.shape[:2]
+
+        # Position histogram in top-left corner with padding
+        hist_pad = 10
+        hist_pos_x = hist_pad
+        hist_pos_y = hist_pad
+
+        # Create a copy of the flow visualization
+        final_frame = rgb_flow.copy()
+
+        # Add histogram to the frame
+        final_frame[hist_pos_y:hist_pos_y+hist_h, hist_pos_x:hist_pos_x+hist_w] = hist_image
 
         # create and add the legend to each frame
         legend = create_flow_color_wheel(width, height)

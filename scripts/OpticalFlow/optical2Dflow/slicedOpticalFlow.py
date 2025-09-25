@@ -47,89 +47,80 @@ def compute_farneback_optical_flow(zarr_path, channel, dim, cropID, output_dir, 
     height = slicedMax.shape[3] 
     width = slicedMax.shape[4]
 
+    # Normalize all frames together
+    all_frames_raw = slicedMax[:, channel, ...]
+    max_val = slicedMax.max()
+    min_val = slicedMax.min()
+    all_frames_norm = ((all_frames_raw - min_val) / (max_val - min_val)) * 255
+    all_frames = all_frames_norm.astype(np.uint8)
+
     flow_list = np.zeros((num_frames, num_slices, height, width, 2), dtype=np.float32)  # initialize flow list
 
-    prev_frame_raw = slicedMax[0,channel,:,:,:]
-    prev_frame_raw = np.concatenate(prev_frame_raw, axis=0) #concatenate slices into a single frame
+    # prev_frame = cv2.normalize(prev_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
+    # prev_frame = prev_frame.astype(np.uint8)
+    # prev_frame = enhance_cell_contrast(prev_frame)
 
-    prev_frame = cv2.normalize(prev_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
-    prev_frame = prev_frame.astype(np.uint8)
-    prev_frame = enhance_cell_contrast(prev_frame)
-
+    prev_frame = all_frames[0]
+    prev_frame = np.concatenate(prev_frame, axis=0) #concatenate slices into a single frame
     prev_frame = cv2.bilateralFilter(prev_frame, d=5, sigmaColor=35, sigmaSpace=5)
 
     prev_flow = None
 
     for frame_index in range (1, num_frames):
-
-        curr_frame_raw = slicedMax[frame_index, channel, :, :, :]
-        curr_frame_raw = np.concatenate(curr_frame_raw, axis=0)  # concatenate slices into a single frame
         #curr_frame_raw = np.flip(curr_frame_raw, axis=0)  # flip vertically to match original orientation
+        # curr_frame = cv2.normalize(curr_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
+        # curr_frame = curr_frame.astype(np.uint8)
+        # curr_frame = enhance_cell_contrast(curr_frame)
 
-        curr_frame = cv2.normalize(curr_frame_raw, None, 0, 255, cv2.NORM_MINMAX)
-        curr_frame = curr_frame.astype(np.uint8)
-        curr_frame = enhance_cell_contrast(curr_frame)
-
+        curr_frame = all_frames[frame_index]
+        curr_frame = np.concatenate(curr_frame, axis=0)  # concatenate slices into a single frame
         curr_frame = cv2.bilateralFilter(curr_frame, d=5, sigmaColor=35, sigmaSpace=5)
 
-        if frame_index > num_frames * 1:  # in none of the frames for testing
-            # use parameters optimized for larger movements
-            flow = cv2.calcOpticalFlowFarneback(
-                prev=prev_frame, next=curr_frame, flow=None,
-                pyr_scale=0.4, levels=7,      # Fewer levels to focus on larger structures
-                winsize=15,                   # Larger window for capturing group movements
-                iterations=10,                # More iterations for accuracy
-                poly_n=7,                     # Larger neighborhood for group behavior
-                poly_sigma=1.5,               # Higher sigma for smoother group flow
-                flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
-            )
-        else:
-            # use parameters from the JSON file for early frames
-            flow = cv2.calcOpticalFlowFarneback(
-                prev=prev_frame, next=curr_frame, flow=None,
-                
-                # pyr_scale: Image pyramid scaling factor (0.1 to 0.99)
-                # - Higher values (0.7-0.9): Faster computation, captures large motions better, less detail
-                # - Lower values (0.3-0.5): Slower computation, captures fine details better, may miss large motions
-                # - 0.5 means each pyramid level is half the size of the previous level
-                pyr_scale=params['pyr_scale'],
-                
-                # levels: Number of pyramid levels (1-20+)
-                # - More levels: Better handling of large motions, slower computation
-                # - Fewer levels: Faster computation, may miss large displacements
-                # - Each level processes the image at different resolutions
-                levels=params['levels'],
-                
-                # winsize: Averaging window size in pixels (odd numbers: 5, 7, 9, 11, 15, etc.)
-                # - Larger windows (11-15): More robust to noise, smoother flow, less spatial detail
-                # - Smaller windows (5-7): More spatial detail, more sensitive to noise
-                # - Must be odd number, represents neighborhood size for flow calculation
-                winsize=params['winsize'],
-                
-                # iterations: Number of iterations at each pyramid level (3-15)
-                # - More iterations: More accurate flow estimation, slower computation
-                # - Fewer iterations: Faster computation, potentially less accurate
-                # - Algorithm refines flow estimate this many times per level
-                iterations=params['iterations'],
-                
-                # poly_n: Size of pixel neighborhood for polynomial expansion (3, 5, or 7)
-                # - 3: Fastest, least accurate, good for small motions
-                # - 5: Balanced speed/accuracy (most common choice)
-                # - 7: Slowest, most accurate, good for complex motions
-                # - Determines complexity of motion model fitted to each pixel
-                poly_n=params['poly_n'],
-                
-                # poly_sigma: Standard deviation of Gaussian used to smooth derivatives (0.8-2.0)
-                # - Lower values (0.8-1.0): Preserves sharp edges, more noise sensitive
-                # - Higher values (1.2-1.5): Smoother derivatives, more noise robust
-                # - Controls smoothing applied before polynomial fitting
-                poly_sigma=params['poly_sigma'],
-                
-                # flags: Algorithm behavior flags
-                # - OPTFLOW_FARNEBACK_GAUSSIAN: Use Gaussian weighting (recommended)
-                # - Can combine with other flags using bitwise OR (|)
-                flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
-            )
+        flow = cv2.calcOpticalFlowFarneback(
+            prev=prev_frame, next=curr_frame, flow=None,
+            
+            # pyr_scale: Image pyramid scaling factor (0.1 to 0.99)
+            # - Higher values (0.7-0.9): Faster computation, captures large motions better, less detail
+            # - Lower values (0.3-0.5): Slower computation, captures fine details better, may miss large motions
+            # - 0.5 means each pyramid level is half the size of the previous level
+            pyr_scale=params['pyr_scale'],
+            
+            # levels: Number of pyramid levels (1-20+)
+            # - More levels: Better handling of large motions, slower computation
+            # - Fewer levels: Faster computation, may miss large displacements
+            # - Each level processes the image at different resolutions
+            levels=params['levels'],
+            
+            # winsize: Averaging window size in pixels (odd numbers: 5, 7, 9, 11, 15, etc.)
+            # - Larger windows (11-15): More robust to noise, smoother flow, less spatial detail
+            # - Smaller windows (5-7): More spatial detail, more sensitive to noise
+            # - Must be odd number, represents neighborhood size for flow calculation
+            winsize=params['winsize'],
+            
+            # iterations: Number of iterations at each pyramid level (3-15)
+            # - More iterations: More accurate flow estimation, slower computation
+            # - Fewer iterations: Faster computation, potentially less accurate
+            # - Algorithm refines flow estimate this many times per level
+            iterations=params['iterations'],
+            
+            # poly_n: Size of pixel neighborhood for polynomial expansion (3, 5, or 7)
+            # - 3: Fastest, least accurate, good for small motions
+            # - 5: Balanced speed/accuracy (most common choice)
+            # - 7: Slowest, most accurate, good for complex motions
+            # - Determines complexity of motion model fitted to each pixel
+            poly_n=params['poly_n'],
+            
+            # poly_sigma: Standard deviation of Gaussian used to smooth derivatives (0.8-2.0)
+            # - Lower values (0.8-1.0): Preserves sharp edges, more noise sensitive
+            # - Higher values (1.2-1.5): Smoother derivatives, more noise robust
+            # - Controls smoothing applied before polynomial fitting
+            poly_sigma=params['poly_sigma'],
+            
+            # flags: Algorithm behavior flags
+            # - OPTFLOW_FARNEBACK_GAUSSIAN: Use Gaussian weighting (recommended)
+            # - Can combine with other flags using bitwise OR (|)
+            flags=cv2.OPTFLOW_FARNEBACK_GAUSSIAN
+        )
 
         # adds temporal smoothing to help reduce flickering between frames
         if prev_flow is not None:
@@ -200,7 +191,7 @@ def make_movie(output_dir, fps=10):
 
         mag, ang = cv2.cartToPolar(curr_frame_flow[..., 0], curr_frame_flow[..., 1])  # calculate magnitude and angle
         hsv[..., 0] = ang * 180 / np.pi / 2  # set hue based on angle
-        hsv[..., 2] = np.clip(mag * (255/10), 0, 255).astype(np.uint8) # takes raw magnitude values and will scale anything above a magntitude of 15 to a brightness of 255
+        hsv[..., 2] = np.clip(mag * 25500, 0, 255).astype(np.uint8) 
 
         rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # convert hsv to bgr
 

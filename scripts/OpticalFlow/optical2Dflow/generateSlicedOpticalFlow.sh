@@ -28,9 +28,9 @@ else
     echo "Submitting job to compute optical flow..."
     if [ -z "$cropID" ]; then
         # No crop ID provided
-        bsub -n 6 -gpu "num=1" -q gpu_a100 -W 24:00 python3 slicedOpticalFlow.py "${zarr_folder}" "${channel}"
+        bsub -n 12 -W 08:00 python3 slicedOpticalFlow.py "${zarr_folder}" "${channel}"
     else
         # Crop ID provided
-        bsub -n 6 -gpu "num=1" -q gpu_a100 -W 24:00 python3 slicedOpticalFlow.py "${zarr_folder}" "${channel}" "${cropID}"
+        bsub -n 12 -W 08:00 python3 slicedOpticalFlow.py "${zarr_folder}" "${channel}" "${cropID}"
     fi
 fi 

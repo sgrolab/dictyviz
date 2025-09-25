@@ -56,7 +56,7 @@ def segmentRocksWatershed(rocksOtsuThreshold, zRange):
     # Pad the image with zeros (background) on all sides
     rocksPadded = np.pad(rocksOtsuThreshold, pad_width=1, mode='constant', constant_values=0)
 
-    # Generate markers from the center zSlice as local maxima of the distance to the background
+    # Generate markers as local maxima of the distance to the background
     distance = ndi.distance_transform_edt(rocksPadded)
     distance_smoothed = ndi.gaussian_filter(distance, sigma=11)
     coords = peak_local_max(distance_smoothed[zRange[0]:zRange[1]], 
