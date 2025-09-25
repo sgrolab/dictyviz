@@ -44,7 +44,7 @@ def main(zarrFile=None, cropID=None):
         print('Analysis directory:', analysisDir, file=f)
 
         # check if sliced projections have already been calculated
-        if os.path.isdir(os.path.join(analysisDir, 'sliced_max_projections' + cropID)):
+        if os.path.isdir(os.path.join(analysisDir, 'sliced_max_projections' + cropID, 'maxx')):
             print('Sliced max projections already calculated, skipping calculation.', file=f)
             return
 
