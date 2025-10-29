@@ -1025,6 +1025,10 @@ def makeSlicedOrthoMaxVideos(root, channel, dim, cmap, ext='.avi'):
 
 def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
 
+    if len(channels) != 2:
+        print(f"Warning: makeCompOrthoMaxVideo requires exactly two channels, but {len(channels)} were provided. Skipping composite video creation.")
+        return
+    
     filename = generateUniqueFilename('comp_orthomax', ext)
 
     voxelDims = channels[0].voxelDims
@@ -1077,6 +1081,8 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
     
     try:
         for i in tqdm(range(lenT)):
+            processedChannels = []
+
             for channel in channels:
                 im = np.zeros([movieHeight,movieWidth])
 
@@ -1089,15 +1095,15 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
                 
                 contrastedIm = adjustContrast(im, channel.scaleMax, channel.scaleMin, channel.gamma)
 
-                # invert if rock channel
+                # invert channel if specified
                 if channel.invertChannel:
                     contrastedIm = 255 - contrastedIm
 
-                # apply color map
-                if channel.name == 'rocks':
-                    greenIm = contrastedIm
-                else:
-                    purpleIm = contrastedIm
+                processedChannels.append(contrastedIm)
+
+            # Assign colors by channel order
+            greenIm = processedChannels[0] 
+            purpleIm = processedChannels[1] 
 
             # merge images
             frame = cv2.merge((purpleIm,greenIm,purpleIm))
