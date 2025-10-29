@@ -445,6 +445,48 @@ def getScaleBarLength(root, voxelDims):
     scaleBarLength = min(scaleBarLengths, key=lambda x:abs(x-approxScaleBarLength))
     return scaleBarLength
 
+
+def calculateTimeStamp(frame_index, imaging_freq, total_frames):
+    """
+    Calculate timestamp string from frame index and imaging frequency.
+    
+    Args:
+        frame_index (int): Frame number (0-based)
+        imaging_freq (float): Time between frames in minutes
+        
+    Returns:
+        str: Formatted timestamp string
+    """
+    # Calculate maximum timestamp to determine format
+    max_total_minutes = (total_frames - 1) * imaging_freq
+    max_hours = int(max_total_minutes // 60)
+    max_remaining_minutes = max_total_minutes % 60
+    max_minutes = int(max_remaining_minutes)
+    max_seconds = int((max_remaining_minutes - max_minutes) * 60)
+
+    show_hours = max_hours > 0
+    show_seconds = max_seconds > 0
+
+    # Calculate current timestamp
+    total_minutes = frame_index * imaging_freq
+    hours = int(total_minutes // 60)
+    remaining_minutes = total_minutes % 60
+    minutes = int(remaining_minutes)
+    seconds = int((remaining_minutes - minutes) * 60)
+    
+    # Format based on maximum needed format
+    if show_hours:
+        if show_seconds:
+            return f'{hours:02d}h:{minutes:02d}m:{seconds:02d}s'
+        else:
+            return f'{hours:02d}h:{minutes:02d}m'
+    else:
+        if show_seconds:
+            return f'{minutes:02d}m:{seconds:02d}s'
+        else:
+            return f'{minutes:02d}m'
+
+
 def addTimeStamp(frame, timeStampPos, t, font):
     # time stamp
     img_pil = Image.fromarray(frame)
@@ -597,7 +639,7 @@ def makeOrthoMaxVideo(root, channel, cmap, ext='.avi'):
             frame = scaleBarXZ._addScaleBar(frame)
 
             # time stamp
-            t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
+            t = calculateTimeStamp(i, imagingFreq, lenT)
             timeStampPos = (0, scaledLenZ+gap)
             frame = addTimeStamp(frame, timeStampPos, t, scaleBarXY.font)
 
@@ -883,8 +925,8 @@ def makeOrthoMaxOpticalFlowVideo(root, channel, ext='.mp4'):
 
             # Add scale bar and timestamp
             frame = scaleBarXY._addScaleBar(frame)
-            timestamp = f'{(i*imagingFreq) // 60:02d}hr:{(i*imagingFreq) % 60:02d}min'
-            frame = addTimeStamp(frame, (10, 20), timestamp, scaleBarXY.font)
+            t = calculateTimeStamp(i, imagingFreq, lenT)
+            frame = addTimeStamp(frame, (10, 20), t, scaleBarXY.font)
 
             # Write frame to video
             vid.write(frame)
@@ -968,7 +1010,7 @@ def makeSlicedOrthoMaxVideos(root, channel, dim, cmap, ext='.avi'):
             frame = scaleBarXY._addScaleBar(frame)
 
             # time stamp
-            t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
+            t = calculateTimeStamp(i, imagingFreq, lenT)
             timeStampPos = (0, 0)
             frame = addTimeStamp(frame, timeStampPos, t, scaleBarXY.font)
 
@@ -1066,7 +1108,7 @@ def makeCompOrthoMaxVideo(root, channels, ext='.avi'):
             frame = scaleBarXZ._addScaleBar(frame)
 
             # time stamp
-            t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
+            t = calculateTimeStamp(i, imagingFreq, lenT)
             timeStampPos = (0, scaledLenZ+gap)
             frame = addTimeStamp(frame, timeStampPos, t, scaleBarXY.font)
 
@@ -1211,7 +1253,7 @@ def makeZDepthOrthoMaxVideo(root, channel, cmap, ext='.avi'):
             frame = scaleBarXZ._addScaleBar(frame)
 
             # time stamp
-            t = f'{(i*imagingFreq) // 60:02d}' +'hr:' + f'{(i*imagingFreq) % 60:02d}' + 'min'
+            t = calculateTimeStamp(i, imagingFreq, lenT)
             timeStampPos = (0, scaledLenZ+gap)
             frame = addTimeStamp(frame, timeStampPos, t, scaleBarXY.font)
 
