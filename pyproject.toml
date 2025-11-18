@@ -68,7 +68,7 @@ Issues = "https://github.com/sgrolab/dictyviz/issues"
 
 [tool.setuptools]
 packages = ["dictyviz"]
-package-dir = {"dictyviz" = "src"}
+package-dir = {"" = "src"}
 
 [tool.setuptools.package-data]
 dictyviz = ["../fonts/Lato2OFL/*.ttf", "../fonts/Lato2OFL/*.txt"]

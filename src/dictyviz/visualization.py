@@ -12,7 +12,7 @@ import numpy as np
 from tqdm import tqdm
 from scipy.ndimage import gaussian_filter
 
-from utils import get_cropping_dims, get_voxel_dims, get_slice_depth, get_imaging_freq
+from .utils import get_cropping_dims, get_voxel_dims, get_slice_depth, get_imaging_freq
 
 
 class Channel:

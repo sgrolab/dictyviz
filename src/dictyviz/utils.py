@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import xml.etree.ElementTree as et
 
-from dictyviz import Channel
+from .visualization import Channel
 
 
 def get_voxel_dims(xml_file, res_lvl=0):

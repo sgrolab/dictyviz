@@ -10,7 +10,7 @@ from tqdm import tqdm
 import torch
 import torch.nn.functional as F
 
-from utils import get_axes, get_channels
+from dictyviz.utils import get_axes, get_channels
 
 THRESHOLD = 98 # Intensity threshold (percentile) in the cell channel for shadow removal
 SHADOW_MED_FILT = 3 # Size of median filter for shadow removal
