@@ -3,8 +3,6 @@ import json
 from pathlib import Path
 import xml.etree.ElementTree as et
 
-from .visualization import Channel
-
 
 def get_voxel_dims(xml_file, res_lvl=0):
     XML_tree = et.parse(xml_file)
@@ -17,7 +15,7 @@ def get_voxel_dims(xml_file, res_lvl=0):
 
 
 def get_axes(zarr_path):
-    ome_metadata_path = zarr_path / "OME" / "METADATA.ome.xml"
+    ome_metadata_path = Path(zarr_path) / "OME" / "METADATA.ome.xml"
     if ome_metadata_path.exists():
         pixel_size_x, pixel_size_y, pixel_size_z = get_voxel_dims(ome_metadata_path)
         axes = [
@@ -38,6 +36,9 @@ def create_root_store(zarr_file):
 
     
 def get_channels(json_file):
+    # Import here to avoid circular import
+    from .visualization import Channel
+    
     with open(json_file) as f:
         channel_specs = json.load(f)["channels"]
     channels = []
