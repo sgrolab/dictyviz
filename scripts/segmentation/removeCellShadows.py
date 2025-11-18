@@ -10,23 +10,11 @@ from tqdm import tqdm
 import torch
 import torch.nn.functional as F
 
+from utils import get_axes, get_channels
+
 THRESHOLD = 98 # Intensity threshold (percentile) in the cell channel for shadow removal
 SHADOW_MED_FILT = 3 # Size of median filter for shadow removal
 
-def get_omezarr_metadata(zarr_path):
-    ome_metadata_path = zarr_path / "OME" / "METADATA.ome.xml"
-    if ome_metadata_path.exists():
-        pixel_size_x, pixel_size_y, pixel_size_z = get_voxel_dims_from_XML(ome_metadata_path)
-        axes = [
-            dict(name='time', type='time', unit='second', scale=1.0),
-            dict(name='channel', type='channel', scale=1.0),
-            dict(name='z', type='space', unit='micrometer', scale=pixel_size_z),
-            dict(name='y', type='space', unit='micrometer', scale=pixel_size_y),
-            dict(name='x', type='space', unit='micrometer', scale=pixel_size_x),
-        ]
-    else:
-        axes = None
-    print(f"Axes metadata: {axes}")
 
 def process_timepoint_gpu(volume, threshold, device='cuda'):
     """
@@ -123,15 +111,22 @@ def __main__():
     output_root.create_dataset(
         "shadows_removed", shape=(T, Z, Y, X), chunks=(1, 1, Y, X), dtype='uint16', overwrite=True
     )
-    # TODO: get metadata from original zarr
-    # output_root["shadows_removed"].attrs['metadata'] = root.attrs['metadata']
+
+    axes = get_axes(zarr_path)
+    output_root["shadows_removed"].attrs['axes'] = axes
     output_root["shadows_removed"].attrs['shadow_removal_threshold_percentile'] = THRESHOLD
     output_root["shadows_removed"].attrs['shadow_removal_median_filter_size'] = SHADOW_MED_FILT
 
     # set channels
-    # TODO: get channel info from original zarr
-    cells = 0
-    rocks = 1
+    channels = get_channels(zarr_path + '/parameters.json')
+    cells = next((i for i, ch in enumerate(channels) if ch.name == 'cells'), None)
+    rocks = next((i for i, ch in enumerate(channels) if ch.name == 'rocks'), None)
+
+    if cells is None or rocks is None:
+        # default to channels 0 and 1
+        print("Warning: 'cells' or 'rocks' channel not found in parameters.json. Defaulting to channels 0 and 1.")
+        cells = 0
+        rocks = 1
 
     # could be recalculated for each time point, but for now we use the first time point
     threshold = np.percentile(res_array[0, cells, 5, :, :], THRESHOLD)

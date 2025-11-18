@@ -16,7 +16,7 @@ def get_voxel_dims(xml_file, res_lvl=0):
     return pixel_size_x, pixel_size_y, pixel_size_z
 
 
-def get_omezarr_metadata(zarr_path):
+def get_axes(zarr_path):
     ome_metadata_path = zarr_path / "OME" / "METADATA.ome.xml"
     if ome_metadata_path.exists():
         pixel_size_x, pixel_size_y, pixel_size_z = get_voxel_dims(ome_metadata_path)
@@ -29,7 +29,7 @@ def get_omezarr_metadata(zarr_path):
         ]
     else:
         axes = None
-    print(f"Axes metadata: {axes}")
+    return axes
 
 
 def create_root_store(zarr_file):
