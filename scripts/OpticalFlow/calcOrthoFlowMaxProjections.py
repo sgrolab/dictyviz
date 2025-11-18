@@ -7,12 +7,8 @@ from tqdm import tqdm
 import json
 from tkinter import Tk, filedialog
 
-# Add src directory to the Python path
-script_dir = os.path.dirname(os.path.abspath(__file__))
-src_path = os.path.join(script_dir, '..', '..', 'src')
-sys.path.append(src_path)
-
 import dictyviz as dv
+from utils import create_root_store
 
 def main(opticalFolder=None, cropID=None):
     if opticalFolder is None:
@@ -55,7 +51,7 @@ def main(opticalFolder=None, cropID=None):
             return
 
         # calculate max projections - create NEW zarr store for results
-        dv.createRootStore(flow_proj_dir)
+        create_root_store(flow_proj_dir)
         maxProjectionsRoot = zarr.open(flow_proj_dir, mode='r+')
         print('Root store created at ', datetime.datetime.now(), file=f)
         

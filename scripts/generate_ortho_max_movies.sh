@@ -71,7 +71,7 @@ if [ -d "${zarr_folder}/../analysis/max_projections${crop_ID}/maxx" ]; then
 else
     # Submit max projection calculation job
     echo "Submitting max projection calculation job..."
-    bsub -n 8 -W 24:00 python calcOrthoMaxProjs.py "${zarr_folder}" "${crop_ID}"
+    bsub -n 16 -W 24:00 python calc_ortho_max_projs.py "${zarr_folder}" "${crop_ID}"
 fi
 
 # Check if sliced max projections have already been calculated
@@ -80,11 +80,11 @@ if [ -d "${zarr_folder}/../analysis/sliced_max_projections${crop_ID}/sliced_maxx
 else
     # Submit sliced max projection calculation job
     echo "Submitting sliced max projection calculation job..."
-    bsub -n 8 -W 24:00 -K python calcSlicedOrthoMaxProjs.py "${zarr_folder}" "${crop_ID}"
+    bsub -n 16 -W 24:00 -K python calc_sliced_ortho_max_projs.py "${zarr_folder}" "${crop_ID}"
 fi
 
 # Submit movie making jobs, waiting for max projs to finish
-bsub -n 8 -W 12:00 -K python makeOrthoProjMovies.py "${zarr_folder}" "${crop_ID}"
+bsub -n 8 -W 12:00 -K python make_ortho_proj_movies.py "${zarr_folder}" "${crop_ID}"
 
 # Submit compression job, waiting for movie making to finish
-./compressMovies.sh "${zarr_folder}" "${crop_ID}"
+./compress_movies.sh "${zarr_folder}" "${crop_ID}"

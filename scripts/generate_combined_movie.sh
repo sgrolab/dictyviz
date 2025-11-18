@@ -20,5 +20,5 @@ if [ -f "$combined_movie" ]; then
     echo "Combined movie already exists at: $combined_movie"
 else
     echo "Submitting job to create combined movie..."
-    bsub -n 8 -W 01:00 python3 combinedMovie.py "$xy_movie" "$optical_movie"
+    bsub -n 8 -W 01:00 python3 combined_movie.py "$xy_movie" "$optical_movie"
 fi
