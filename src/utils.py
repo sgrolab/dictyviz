@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import xml.etree.ElementTree as et
 
-from dictyviz import channel
+from dictyviz import Channel
 
 
 def get_voxel_dims(xml_file, res_lvl=0):
@@ -42,7 +42,7 @@ def get_channels(json_file):
         channel_specs = json.load(f)["channels"]
     channels = []
     for channel_info in channel_specs:
-        current_channel = channel(name=channel_info["name"],
+        current_channel = Channel(name=channel_info["name"],
                                 n_channel=channel_info["channelNumber"],
                                 scale_max=channel_info["scaleMax"],
                                 scale_min=channel_info["scaleMin"],)
