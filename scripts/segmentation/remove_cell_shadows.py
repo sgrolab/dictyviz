@@ -102,8 +102,8 @@ def __main__():
     res_array = root['0']['0']
 
     # Set z range from command line arguments
-    z_range = range(int(sys.argv[2]), int(sys.argv[3]))
-    Z = len(z_range)
+    z_range = (int(sys.argv[2]), int(sys.argv[3]))
+    Z = len(range(z_range[0], z_range[1]))
 
     T, C, _, Y, X = res_array.shape
 
@@ -118,7 +118,7 @@ def __main__():
     output_root["shadows_removed"].attrs['shadow_removal_median_filter_size'] = SHADOW_MED_FILT
 
     # set channels
-    channels = get_channels(zarr_path + '/parameters.json')
+    channels = get_channels(zarr_path + '/../parameters.json')
     cells = next((i for i, ch in enumerate(channels) if ch.name == 'cells'), None)
     rocks = next((i for i, ch in enumerate(channels) if ch.name == 'rocks'), None)
 
@@ -131,7 +131,7 @@ def __main__():
     # could be recalculated for each time point, but for now we use the first time point
     threshold = np.percentile(res_array[0, cells, 5, :, :], THRESHOLD)
 
-    for t in range(T):
+    for t in tqdm(range(T)):
 
         # tpOutputDir = outputDir + f"t{t}/"
         # if not os.path.exists(tpOutputDir):
@@ -142,7 +142,7 @@ def __main__():
         if torch.cuda.is_available():
             try:
                 # Get all z-slices for this timepoint
-                volume = res_array[t, :, z_range, :, :]  # Shape: (Z, H, W)
+                volume = res_array[t, :, z_range[0]:z_range[1], :, :]  # Shape: (Z, H, W)
                 # TODO: feed channel info instead of hardcoding
                 rocks_img_filtered, masked_cells = process_timepoint_gpu(
                     volume, threshold, device
