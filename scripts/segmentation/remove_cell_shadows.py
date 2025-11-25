@@ -1,8 +1,8 @@
 import os
 import sys
 import zarr
+import datetime
 import matplotlib.pyplot as plt
-import cv2
 import numpy as np
 import tifffile as tiff
 from tqdm import tqdm
@@ -16,14 +16,14 @@ THRESHOLD = 98 # Intensity threshold (percentile) in the cell channel for shadow
 SHADOW_MED_FILT = 3 # Size of median filter for shadow removal
 
 
-def process_timepoint_gpu(volume, threshold, device='cuda'):
+def process_timepoint_gpu(volume, threshold, channels, device='cuda'):
     """
     GPU-optimized processing of a single timepoint across all z-slices.
     """
 
     # Convert to native byte order before PyTorch conversion
-    rocks_volume = np.ascontiguousarray(volume[0], dtype=np.float32)
-    cells_volume = np.ascontiguousarray(volume[1], dtype=np.float32)
+    rocks_volume = np.ascontiguousarray(volume[channels[1]], dtype=np.float32)
+    cells_volume = np.ascontiguousarray(volume[channels[0]], dtype=np.float32)
 
     # Convert to torch tensors and move to GPU
     rocks_tensor = torch.from_numpy(rocks_volume).to(device)
@@ -63,21 +63,6 @@ def process_timepoint_gpu(volume, threshold, device='cuda'):
     
     return rocks_filtered.cpu().numpy(), cells_masked.cpu().numpy().astype(np.uint8)
 
-def remove_cell_shadows(rocks_img, cells_img, threshold):
-    """    Remove shadows of cells from the rocks image by applying a median filter
-    to the pixels in the rocks image that are shadowed by cells.
-    """
-    rocks_img_filtered = rocks_img.copy()
-    cells_img_masked = cv2.merge([cells_img, cells_img, cells_img]).astype("uint8")  # Create a 3-channel mask from the single channel cells image
-    for i in range(cells_img.shape[0]):
-        for j in range(cells_img.shape[1]):
-            # Check if the pixel value is above the threshold
-            if cells_img[i, j] > threshold:
-                #apply a median filter to the corresponding rocks pixel
-                local_median = np.median(rocks_img[max(0,i-SHADOW_MED_FILT):min(rocks_img.shape[0],i+SHADOW_MED_FILT), max(0,j-SHADOW_MED_FILT):min(rocks_img.shape[1],j+SHADOW_MED_FILT)])
-                rocks_img_filtered[i, j] = local_median
-                cells_img_masked[i, j, :] =  [255, 0, 0]  # Mark the cell shadow in red for visualization
-    return rocks_img_filtered, cells_img_masked
 
 def __main__():
     #TODO: switch to saving as zarrs instead of tiffs
@@ -93,19 +78,18 @@ def __main__():
     # Load the Zarr dataset
     zarr_path = sys.argv[1]
     print(f"Loading Zarr dataset from {zarr_path}...")
+
     parent_dir = os.path.dirname(zarr_path) + "/"
+    # Use z range for output dir
     output_zarr = parent_dir + "segmentation/"
     if not os.path.exists(output_zarr):
         os.makedirs(output_zarr)
+    print(f"Output Zarr directory: {output_zarr}")
 
     root = zarr.open(zarr_path, mode='r')
     res_array = root['0']['0']
 
-    # Set z range from command line arguments
-    z_range = (int(sys.argv[2]), int(sys.argv[3]))
-    Z = len(range(z_range[0], z_range[1]))
-
-    T, C, _, Y, X = res_array.shape
+    T, C, Z, Y, X = res_array.shape
 
     output_root = zarr.open(output_zarr, mode='a')
     output_root.create_dataset(
@@ -118,9 +102,9 @@ def __main__():
     output_root["shadows_removed"].attrs['shadow_removal_median_filter_size'] = SHADOW_MED_FILT
 
     # set channels
-    channels = get_channels(zarr_path + '/../parameters.json')
-    cells = next((i for i, ch in enumerate(channels) if ch.name == 'cells'), None)
-    rocks = next((i for i, ch in enumerate(channels) if ch.name == 'rocks'), None)
+    channel_info = get_channels(zarr_path + '/../parameters.json')
+    cells = next((i for i, ch in enumerate(channel_info) if ch.name == 'cells'), None)
+    rocks = next((i for i, ch in enumerate(channel_info) if ch.name == 'rocks'), None)
 
     if cells is None or rocks is None:
         # default to channels 0 and 1
@@ -128,29 +112,28 @@ def __main__():
         cells = 0
         rocks = 1
 
+    print(f"Cells channel: {cells}, Rocks channel: {rocks}")
+    channels = [cells, rocks]
+
     # could be recalculated for each time point, but for now we use the first time point
     threshold = np.percentile(res_array[0, cells, 5, :, :], THRESHOLD)
 
+    print(f"Using intensity threshold of {threshold} for shadow removal.")
+
     for t in tqdm(range(T)):
 
-        # tpOutputDir = outputDir + f"t{t}/"
-        # if not os.path.exists(tpOutputDir):
-        #     os.makedirs(tpOutputDir)
-
-        # rocksImgPath = tpOutputDir + "cell_shadows_removed_" + str(THRESHOLD) + "thresh_" + str(SHADOW_MED_FILT) + "medfilt.tif"
-        #cellsImgPath = tpOutputDir + "cell_mask_" + str(THRESHOLD) + "thresh_" + str(SHADOW_MED_FILT) + "medfilt.tif"
         if torch.cuda.is_available():
             try:
                 # Get all z-slices for this timepoint
-                volume = res_array[t, :, z_range[0]:z_range[1], :, :]  # Shape: (Z, H, W)
-                # TODO: feed channel info instead of hardcoding
+                volume = res_array[t]  # Shape: (C, Z, H, W)
                 rocks_img_filtered, masked_cells = process_timepoint_gpu(
-                    volume, threshold, device
+                    volume, threshold, channels, device
                 )
 
                 rocks_img_filtered = rocks_img_filtered.astype(np.uint16)
+
                 output_root["shadows_removed"][t] = rocks_img_filtered
-                
+
                 # Clear GPU cache periodically
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
@@ -159,34 +142,9 @@ def __main__():
                 print("Error processing with GPU")
                 import traceback
                 traceback.print_exc()
-                # finalImg = np.zeros((resArray.shape[2], resArray.shape[3], resArray.shape[4]), dtype=np.uint16)  # Initialize the array for filtered rocks image
-                # maskedCells = []  # Create a 3-channel mask from the single channel cells image
 
-                # for zSlice in tqdm(range(resArray.shape[2]), desc="Removing cell shadows"):
-                #     rocksImg = resArray[t, rocks, zSlice, :, :]
-                #     cellsImg = resArray[t, cells, zSlice, :, :]
-
-                #     rocksImgFiltered, cellsImgMasked = removeCellShadows(rocksImg, cellsImg, threshold)
-
-                #     finalImg[zSlice, :, :] = rocksImgFiltered
-                #     maskedCells.append(cellsImgMasked)
-                # rocksImgFiltered = finalImg
-                # maskedCells = np.array(maskedCells)
         else:
             print("GPU not available")
-            # finalImg = np.zeros((resArray.shape[2], resArray.shape[3], resArray.shape[4]), dtype=np.uint16)  # Initialize the array for filtered rocks image
-            # maskedCells = []
-            # for zSlice in tqdm(range(resArray.shape[2]), desc="Removing cell shadows"):
-
-            #     rocksImg = resArray[t, rocks, zSlice, :, :]
-            #     cellsImg = resArray[t, cells, zSlice, :, :]
-
-            #     rocksImgFiltered, cellsImgMasked = removeCellShadows(rocksImg, cellsImg, threshold)
-
-            #     finalImg[zSlice, :, :] = rocksImgFiltered
-            #     maskedCells.append(cellsImgMasked)
-            # rocksImgFiltered = finalImg
-            # maskedCells = np.array(maskedCells)
 
         # clear memory
         del rocks_img_filtered
