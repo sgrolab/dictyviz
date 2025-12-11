@@ -2,6 +2,7 @@
 import copy
 import os
 import traceback
+from pathlib import Path
 
 import xml.etree.ElementTree as et
 import cv2
@@ -344,8 +345,8 @@ class ScaleBar:
 
     def _set_font(self):
         #TODO: add a style sheet and get font from there
-        module_dir = os.path.dirname(os.path.abspath(__file__))
-        font_path = os.path.join(module_dir, '..', 'fonts', 'Lato2OFL', 'Lato-Black.ttf')
+        module_dir = Path(__file__).parent
+        font_path = module_dir.parent.parent / 'fonts' / 'Lato2OFL' / 'Lato-Black.ttf'
         font_size = 1
         self.font = ImageFont.truetype(font_path, font_size)
         while self.font.getlength(self.text) <= self.length_in_px/2:
@@ -911,10 +912,10 @@ def make_sliced_ortho_max_videos(root, channel, dim, cmap, ext='.avi'):
     # define scale bars
     scale_bar_length = get_scale_bar_length(root, channel.voxel_dims)
     scale_bar_xy = ScaleBar(
-        posY = movie_height,
-        posX = movie_width,
+        pos_y = movie_height,
+        pos_x = movie_width,
         length = scale_bar_length,
-        pxPerMicron = 1/channel.voxel_dims[0],
+        px_per_micron = 1/channel.voxel_dims[0],
         font = None,
     )
     scale_bar_xy._set_font()
@@ -997,18 +998,18 @@ def make_comp_ortho_max_video(root, channels, ext='.avi'):
     # define scale bars
     scale_bar_length = get_scale_bar_length(root, channel.voxel_dims)
     scale_bar_xy = ScaleBar(
-        posY = movie_height,
-        posX = len_x,
+        pos_y = movie_height,
+        pos_x = len_x,
         length = scale_bar_length,
-        pxPerMicron = 1/channel.voxel_dims[0],
+        px_per_micron = 1/channel.voxel_dims[0],
         font = None,
     )
     scale_bar_xy._set_font()
     scale_bar_xz = ScaleBar(
-        posY = scaled_len_z,
-        posX = len_x + gap + scaled_len_z,
+        pos_y = scaled_len_z,
+        pos_x = len_x + gap + scaled_len_z,
         length = int(len_z*channel.voxel_dims[2]),
-        pxPerMicron = 1/channel.voxel_dims[0],
+        px_per_micron = 1/channel.voxel_dims[0],
         font = None,
     )
     scale_bar_xz._set_font()
@@ -1118,18 +1119,18 @@ def make_z_depth_ortho_max_video(root, channel, cmap, ext='.avi'):
     # define scale bars
     scale_bar_length = get_scale_bar_length(root, channel.voxel_dims)
     scale_bar_xy = ScaleBar(
-        posY = movie_height,
-        posX = len_x,
+        pos_y = movie_height,
+        pos_x = len_x,
         length = scale_bar_length,
-        pxPerMicron = 1/channel.voxel_dims[0],
+        px_per_micron = 1/channel.voxel_dims[0],
         font = None,
     )
     scale_bar_xy._set_font()
     scale_bar_xz = ScaleBar(
-        posY = scaled_len_z,
-        posX = len_x + gap + scaled_len_z,
+        pos_y = scaled_len_z,
+        pos_x = len_x + gap + scaled_len_z,
         length = int(len_z*channel.voxel_dims[2]),
-        pxPerMicron = 1/channel.voxel_dims[0],
+        px_per_micron = 1/channel.voxel_dims[0],
         font = None,
     )
     scale_bar_xz._set_font()
