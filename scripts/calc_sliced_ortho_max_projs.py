@@ -4,8 +4,8 @@ import datetime
 import zarr
 from tkinter import Tk, filedialog
 
-import dictyviz as dv
-from utils import create_root_store
+import dictyviz.visualization as dv
+from dictyviz.utils import create_root_store
 
 def main(zarr_file=None, crop_id=None):
     if zarr_file is None:

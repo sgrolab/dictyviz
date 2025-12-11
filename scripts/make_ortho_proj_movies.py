@@ -6,9 +6,9 @@ import json
 from tkinter import Tk, filedialog
 from dask.distributed import Client, wait
 
-import dictyviz as dv
-from dictyviz import Channel
-from utils import get_channels, get_voxel_dims
+import dictyviz.visualization as dv
+from dictyviz.visualization import Channel
+from dictyviz.utils import get_channels, get_voxel_dims
 
 # TODO: add crop_id as kwarg
 def main(zarr_file=None, crop_id=None):
