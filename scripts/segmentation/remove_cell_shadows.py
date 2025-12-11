@@ -65,7 +65,6 @@ def process_timepoint_gpu(volume, threshold, channels, device='cuda'):
 
 
 def __main__():
-    #TODO: switch to saving as zarrs instead of tiffs
 
     # Check GPU availability
     if torch.cuda.is_available():

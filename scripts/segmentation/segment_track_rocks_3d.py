@@ -9,6 +9,7 @@ import tifffile as tiff
 from tqdm import tqdm
 import dask.array as da
 import networkx as nx
+from pathlib import Path
 
 from scipy import ndimage as ndi
 from skimage.filters import threshold_mean
@@ -255,12 +256,16 @@ def merge_regions_by_boundary_fraction(labels, rag, boundary_fraction_threshold=
         # Simply merge region1 into region2
         # Remap all instances of region1's current label to region2's current label
         merged_labels[merged_labels == current_label1] = current_label2
+
+        # Update label map
+        for key, value in label_map.items():
+            if value == current_label1:
+                label_map[key] = current_label2
         
         merge_count += 1
-        if merge_count <= 10:  # Only print first 10 merges
-            print(f"  Merging region {region1} (surface={surface1}) "
-                  f"into region {region2} (surface={surface2}): "
-                  f"boundary fraction={boundary_fraction:.3f} ({int(shared_faces)} shared faces)")
+        print(f"  Merging region {region1} (surface={surface1}) "
+                f"into region {region2} (surface={surface2}): "
+                f"boundary fraction={boundary_fraction:.3f} ({int(shared_faces)} shared faces)")
     
     print(f"Merged {merge_count} region pairs.")
     
@@ -282,7 +287,7 @@ def merge_regions_by_boundary_fraction(labels, rag, boundary_fraction_threshold=
 def __main__(args):
 
     # Load the Zarr dataset
-    zarr_path = args.zarr_path
+    zarr_path = Path(args.zarr_path)
     print(f"Loading Zarr dataset from {zarr_path}...")
 
     thresh_method = args.thresh_method  # 'otsu' or 'mean'
@@ -293,12 +298,12 @@ def __main__(args):
     boundary_fraction_threshold = args.boundary_fraction_threshold
 
     exp_name = f"{z_range[0]}_{z_range[1]}_{thresh_method}_thresh_{boundary_fraction_threshold}_boundary_frac"
-    parent_dir = os.path.dirname(zarr_path) + "/"
-    seg_dir = parent_dir + "segmentation/"
-    output_dir = seg_dir + exp_name + "/"
+    parent_dir = zarr_path.parent
+    seg_dir = parent_dir / "segmentation"
+    output_dir = seg_dir / exp_name
     print(f"Writing output to experiment directory: {output_dir}")
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True, exist_ok=True)
 
     seg_root = zarr.open(seg_dir, mode='a')
     rocks_img = seg_root["shadows_removed"]
@@ -309,38 +314,38 @@ def __main__(args):
     # Create output zarrs
     output_root = zarr.open(output_dir, mode='a')
     if thresh_method == 'otsu':
-        if os.path.exists(output_dir + "rocks_otsu_thresh"):
+        if (output_dir / "rocks_otsu_thresh").exists():
             rocks_thresh = output_root["rocks_otsu_thresh"]
         else:
             rocks_thresh = output_root.create_dataset(
-                "rocks_otsu_thresh", shape=(T, Z, Y, X), chunks=(1, 1, Y, X), dtype='uint8', overwrite=True
+                "rocks_otsu_thresh", shape=(T, Z, Y, X), chunks=(1, 1, Y, X), dtype='bool', overwrite=True
             )
     elif thresh_method == 'mean':
-        if os.path.exists(output_dir + "rocks_mean_thresh"):
+        if (output_dir / "rocks_mean_thresh").exists():
             rocks_thresh = output_root["rocks_mean_thresh"]
         else:
             rocks_thresh = output_root.create_dataset(
-                "rocks_mean_thresh", shape=(T, Z, Y, X), chunks=(1, 1, Y, X), dtype='uint8', overwrite=True
+                "rocks_mean_thresh", shape=(T, Z, Y, X), chunks=(1, 1, Y, X), dtype='bool', overwrite=True
             )
-    if os.path.exists(output_dir + "segmented_rocks"):
+    if (output_dir / "segmented_rocks").exists():
         segmented_rocks = output_root["segmented_rocks"]
     else:
         segmented_rocks = output_root.create_dataset(
             "segmented_rocks", shape=(T, Z, Y, X), chunks=(1, 1, Y, X), dtype='uint16', overwrite=True
         )
-    if os.path.exists(output_dir + "segmented_rocks_merge"):
+    if (output_dir / "segmented_rocks_merge").exists():
         segmented_rocks_merge = output_root["segmented_rocks_merge"]
     else:
         segmented_rocks_merge = output_root.create_dataset(
             "segmented_rocks_merge", shape=(T, Z, Y, X), chunks=(1, 1, Y, X), dtype='uint16', overwrite=True
         )
-    if os.path.exists(output_dir + "centroids"):
+    if (output_dir / "centroids").exists():
         centroids = output_root["centroids"]
     else:
         centroids = output_root.create_dataset(
             "centroids", shape=(T, Z, Y, X), chunks=(1, 1, Y, X), dtype='uint16', overwrite=True
         )
-    if os.path.exists(output_dir + "tracked_labels"):
+    if (output_dir / "tracked_labels").exists():
         tracked_labels = output_root["tracked_labels"]
     else:
         tracked_labels = output_root.create_dataset(
@@ -376,11 +381,11 @@ def __main__(args):
                     # Apply thresholding method
                     if thresh_method == 'otsu':
                         rocks_threshold = apply_otsu_threshold(rocks_gaussian_filtered)
-                        rocks_thresh[t] = rocks_threshold.astype("uint8")
+                        rocks_thresh[t] = rocks_threshold.astype("bool")
                         print(f"Otsu thresholded rocks image saved to {output_dir}/rocks_otsu_thresh")
                     elif thresh_method == 'mean':
                         rocks_threshold = apply_mean_threshold(rocks_gaussian_filtered)
-                        rocks_thresh[t] = rocks_threshold.astype("uint8")
+                        rocks_thresh[t] = rocks_threshold.astype("bool")
                         print(f"Mean thresholded rocks image saved to {output_dir}/rocks_mean_thresh")
 
                     # Clear memory
@@ -408,7 +413,7 @@ def __main__(args):
             rag = create_boundary_rag(labels)
             
             print("Merging regions based on boundary surface fraction...")
-            merged_labels = merge_regions_by_boundary_fraction(labels, rag, boundary_fraction_threshold=0.15)
+            merged_labels = merge_regions_by_boundary_fraction(labels, rag, boundary_fraction_threshold)
 
             # Save the segmented rocks image after merging
             segmented_rocks_merge[t] = merged_labels.astype("uint16")
@@ -416,10 +421,12 @@ def __main__(args):
 
             del labels
             del merged_labels
+        else:
+            print(f"Merged segmentation image already exists. Skipping processing for time point {t}.")
 
 
     # Calculate centroids for each timepoint
-    if not os.path.exists(output_dir + "centroids.csv"):
+    if not (output_dir / "centroids.csv").exists():
         print("Calculating centroids for each timepoint...")
         region_props = []
         for t in range(T):
@@ -428,15 +435,15 @@ def __main__(args):
             centroids['frame'] = t
             region_props.append(centroids)
         region_props_df = pd.concat(region_props)
-        region_props_df.to_csv(output_dir + "centroids.csv", index=False)
+        region_props_df.to_csv(output_dir / "centroids.csv", index=False)
     else:
         print("Loading centroids from existing file...")
-        region_props_df = pd.read_csv(output_dir + "centroids.csv")
+        region_props_df = pd.read_csv(output_dir / "centroids.csv")
 
     # Generate tracks from centroids
-    tracks_path = output_dir + "rock_tracks.csv"
-    graph_path = output_dir + "rock_tracking.graphml"
-    if not os.path.exists(tracks_path):
+    tracks_path = output_dir / "rock_tracks.csv"
+    graph_path = output_dir / "rock_tracking.graphml"
+    if not tracks_path.exists():
 
         # Use LapTrack to track the rocks
         print("Tracking rocks across all frames using LapTrack...")
@@ -446,6 +453,9 @@ def __main__(args):
             coordinate_cols=["centroid-0", "centroid-1", "centroid-2"],
             only_coordinate_cols=False,
         )
+        # Increase tree_id and track_id by 1 to avoid zero indexing
+        track_df["tree_id"] = track_df["tree_id"] + 1
+        track_df["track_id"] = track_df["track_id"] + 1
         track_df = track_df.reset_index()
         graph = convert_split_merge_df_to_napari_graph(split_df, merge_df)
 
@@ -467,12 +477,12 @@ def __main__(args):
         print("Using tracks to link labels across frames...")
         for t in range(T):
             print(f"Linking labels for timepoint {t}...")
-            labels = da.from_zarr(output_root["segmented_rocks"])[t].compute()
+            labels = da.from_zarr(output_root["segmented_rocks_merge"])[t].compute()
             # Load the current timepoint into memory
             tracked_t = tracked_labels[t][:]  # Get as numpy array
             for i, row in track_df[track_df["frame"] == t].iterrows():
                 inds = np.where(labels == row["label"])
-                tracked_t[inds] = int(row["tree_id"]) + 1  # Modify numpy array
+                tracked_t[inds] = int(row["tree_id"])  # Modify numpy array
             # Write back to zarr
             tracked_labels[t] = tracked_t  # Write the entire timepoint back
             del labels
@@ -498,10 +508,18 @@ def __main__(args):
                     "motion_y": [end["centroid-1"] - start["centroid-1"]],
                     "motion_x": [end["centroid-2"] - start["centroid-2"]],
                     "track_id": [track_id],
+                    "tree_id": [start["tree_id"]],
                     "frame": [int(start["frame"])+1]
                 })
                 track_motion_vectors.append(frame_vector)
             track_motion_vectors = pd.concat(track_motion_vectors, ignore_index=True)
+            # Calculate total displacement from first to last frame
+            start = track.iloc[0]
+            end = track.iloc[-1]
+            displacement = np.sqrt((end["centroid-0"] - start["centroid-0"])**2 +
+                                   (end["centroid-1"] - start["centroid-1"])**2 +
+                                   (end["centroid-2"] - start["centroid-2"])**2)
+            track_motion_vectors["total_displacement"] = displacement
             motion_vectors.append(track_motion_vectors)
 
     motion_vectors = pd.concat(motion_vectors, ignore_index=True)
@@ -509,14 +527,14 @@ def __main__(args):
     # Calculate magnitude of motion vectors for each frame pair
     motion_vectors["magnitude"] = np.sqrt(motion_vectors["motion_x"]**2 + 
                                        motion_vectors["motion_y"]**2 + 
-                                       motion_vectors["motion_z"]**2)
+                                       motion_vectors["motion_z"]**2) 
     
     # Calculate and sort tracks by total motion from first to last frame
     motion_vectors["total_motion"] = motion_vectors.groupby("track_id")["magnitude"].transform("sum")
-    motion_vectors = motion_vectors.sort_values(by="total_motion", ascending=False).reset_index(drop=True)
+    motion_vectors = motion_vectors.sort_values(by=["total_motion", "frame"], ascending=False).reset_index(drop=True)
 
     # Save motion vectors
-    motion_vectors_path = output_dir + "rock_motion_vectors.csv"
+    motion_vectors_path = output_dir / "rock_motion_vectors.csv"
     motion_vectors.to_csv(motion_vectors_path, index=False)
     print(f"Motion vectors saved to {motion_vectors_path}")
 
